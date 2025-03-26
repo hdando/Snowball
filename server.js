@@ -13,11 +13,47 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // État du jeu
 const gameState = {
-  players: {},
-  processors: {},
-  cannons: {},
-  projectiles: {}
+    players: {},
+    processors: {},
+    cannons: {},
+    projectiles: {},
+    structures: {} 
 };
+
+// fonction pour générer les structures une seule fois au démarrage du serveur
+function generateStaticStructures() {
+    // Créer le château d'eau
+    const waterTowerId = 'water-tower-1';
+    gameState.structures[waterTowerId] = {
+        id: waterTowerId,
+        type: 'waterTower',
+        position: {x: 0, y: 0, z: 0}
+    };
+    
+    // Créer les arbres
+    const treeCount = 40;
+    for (let i = 0; i < treeCount; i++) {
+        let x, z;
+        do {
+            x = (Math.random() * 100 - 50) * 0.8; // -40 à 40
+            z = (Math.random() * 100 - 50) * 0.8; // -40 à 40
+        } while (Math.sqrt(x*x + z*z) < 20); // Éviter le centre
+        
+        const treeId = `tree-${i}`;
+        gameState.structures[treeId] = {
+            id: treeId,
+            type: 'tree',
+            position: {x, y: 0, z},
+            hp: 150,
+            maxHp: 150
+        };
+    }
+    
+    console.log(`Structures statiques générées: ${Object.keys(gameState.structures).length}`);
+}
+
+// Appeler cette fonction au démarrage du serveur
+generateStaticStructures();
 
 // ID des processeurs et canons
 let processorId = 0;
@@ -55,6 +91,32 @@ io.on('connection', (socket) => {
     // Envoyer la liste complète des joueurs au nouveau joueur
     socket.emit('playerList', gameState.players);
   });
+  
+	socket.on('structureDamaged', (data) => {
+		if (gameState.structures[data.structureId]) {
+			// Appliquer les dégâts
+			gameState.structures[data.structureId].hp -= data.damage;
+			
+			// Vérifier si la structure est détruite
+			if (gameState.structures[data.structureId].hp <= 0) {
+				gameState.structures[data.structureId].hp = 0;
+				gameState.structures[data.structureId].destroyed = true;
+				
+				// Informer tous les joueurs
+				io.emit('structureDestroyed', {
+					id: data.structureId,
+					position: gameState.structures[data.structureId].position
+				});
+			} else {
+				// Informer tous les joueurs des dégâts
+				io.emit('structureDamaged', {
+					id: data.structureId,
+					damage: data.damage,
+					hp: gameState.structures[data.structureId].hp
+				});
+			}
+		}
+	});  
   
   // Mettre à jour la position du joueur
   socket.on('playerUpdate', (playerData) => {
