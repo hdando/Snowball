@@ -3254,7 +3254,8 @@
 				if (e.key === 'Enter') joinGame();
 			});
 		});
-
+		
+		document.addEventListener('DOMContentLoaded', createGameCycleUI);
 
 		// Fonction pour mettre à jour le tableau de score
 		function updateScoreboard() {
@@ -3436,6 +3437,76 @@
 				const structure = gameMap.structures.find(s => s.id === data.id);
 				if (structure && structure.die) {
 					structure.die();
+				}
+			});
+			// Gestion des événements de cycle de jeu
+			socket.on('gameEnded', (data) => {
+				console.log('La partie est terminée!', data);
+				
+				// Afficher le podium
+				showPodium(data.winners);
+				
+				// Démarrer le compte à rebours pour le redémarrage
+				startCountdown(data.duration / 1000, 'Redémarrage dans');
+			});
+
+			socket.on('gameRestarting', (data) => {
+				console.log('Redémarrage imminent...');
+				
+				// Avertir le joueur du redémarrage imminent
+				showRestartingMessage();
+				
+				// Démarrer un compte à rebours court
+				startCountdown(data.duration / 1000, 'Redémarrage dans');
+			});
+
+			socket.on('gameRestarted', (data) => {
+				console.log('Nouvelle partie!', data);
+				
+				// Masquer le podium
+				hidePodium();
+				
+				// Réinitialiser l'interface utilisateur
+				resetUI();
+				
+				// Mettre à jour l'état du jeu
+				updateGameState(data.gameState);
+				
+				// Afficher l'horloge de la partie
+				showGameClock(data.gameInfo.endTime);
+			});
+
+			// Ajouter cette fonction pour recevoir l'état du jeu au début
+			socket.on('gameState', (state) => {
+				console.log('État initial du jeu reçu:', state);
+				
+				// Traiter les structures statiques
+				if (state.structures) {
+					Object.values(state.structures).forEach(structureData => {
+						createServerStructure(structureData);
+					});
+				}
+				
+				// Traiter les joueurs existants
+				Object.entries(state.players).forEach(([id, playerData]) => {
+					if (id !== socket.id) {
+						createOtherPlayer(id, playerData);
+					}
+				});
+				
+				// Traiter les processeurs existants
+				Object.values(state.processors).forEach(processorData => {
+					createServerProcessor(processorData);
+				});
+				
+				// Traiter les canons existants
+				Object.values(state.cannons).forEach(cannonData => {
+					createServerCannon(cannonData);
+				});
+				
+				// Afficher l'horloge si nous recevons aussi des informations sur la partie
+				if (state.gameInfo) {
+					showGameClock(state.gameInfo.endTime);
 				}
 			});
 			
@@ -3735,7 +3806,300 @@
 			}
 		}
 
+		function createGameCycleUI() {
+			// Créer l'horloge de jeu
+			const gameClock = document.createElement('div');
+			gameClock.id = 'game-clock';
+			gameClock.style.position = 'absolute';
+			gameClock.style.top = '10px';
+			gameClock.style.left = '50%';
+			gameClock.style.transform = 'translateX(-50%)';
+			gameClock.style.color = 'white';
+			gameClock.style.fontFamily = 'Arial, sans-serif';
+			gameClock.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+			gameClock.style.padding = '10px';
+			gameClock.style.borderRadius = '5px';
+			gameClock.style.zIndex = '1000';
+			gameClock.style.display = 'none';
+			document.body.appendChild(gameClock);
+			
+			// Créer l'écran de podium
+			const podiumScreen = document.createElement('div');
+			podiumScreen.id = 'podium-screen';
+			podiumScreen.style.position = 'absolute';
+			podiumScreen.style.top = '0';
+			podiumScreen.style.left = '0';
+			podiumScreen.style.width = '100%';
+			podiumScreen.style.height = '100%';
+			podiumScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+			podiumScreen.style.display = 'none';
+			podiumScreen.style.justifyContent = 'center';
+			podiumScreen.style.alignItems = 'center';
+			podiumScreen.style.flexDirection = 'column';
+			podiumScreen.style.zIndex = '2000';
+			document.body.appendChild(podiumScreen);
+			
+			// Créer le conteneur du podium
+			const podiumContainer = document.createElement('div');
+			podiumContainer.id = 'podium-container';
+			podiumContainer.style.display = 'flex';
+			podiumContainer.style.justifyContent = 'center';
+			podiumContainer.style.alignItems = 'flex-end';
+			podiumContainer.style.width = '80%';
+			podiumContainer.style.height = '300px';
+			podiumScreen.appendChild(podiumContainer);
+			
+			// Créer le compteur de redémarrage
+			const restartCounter = document.createElement('div');
+			restartCounter.id = 'restart-counter';
+			restartCounter.style.color = 'white';
+			restartCounter.style.fontFamily = 'Arial, sans-serif';
+			restartCounter.style.fontSize = '24px';
+			restartCounter.style.marginTop = '50px';
+			podiumScreen.appendChild(restartCounter);
+		}
+		
+		// Afficher l'horloge de la partie
+		function showGameClock(endTime) {
+			const gameClock = document.getElementById('game-clock');
+			if (!gameClock) return;
+			
+			gameClock.style.display = 'block';
+			
+			// Mettre à jour l'horloge chaque seconde
+			const updateClock = () => {
+				const now = Date.now();
+				const timeLeft = endTime - now;
+				
+				if (timeLeft <= 0) {
+					gameClock.textContent = "Fin de partie!";
+					return;
+				}
+				
+				// Formater le temps restant
+				const minutes = Math.floor(timeLeft / 60000);
+				const seconds = Math.floor((timeLeft % 60000) / 1000);
+				
+				gameClock.textContent = `Temps restant: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+				
+				// Continuer à mettre à jour
+				requestAnimationFrame(updateClock);
+			};
+			
+			updateClock();
+		}
 
+		// Afficher le podium avec les gagnants
+		function showPodium(winners) {
+			const podiumScreen = document.getElementById('podium-screen');
+			const podiumContainer = document.getElementById('podium-container');
+			if (!podiumScreen || !podiumContainer) return;
+			
+			// Vider le contenu précédent
+			podiumContainer.innerHTML = '';
+			
+			// Créer le titre
+			const title = document.createElement('h1');
+			title.textContent = "Fin de partie - Podium";
+			title.style.color = 'white';
+			title.style.textAlign = 'center';
+			title.style.marginBottom = '30px';
+			podiumScreen.insertBefore(title, podiumContainer);
+			
+			// Positions des podiums (ordre d'affichage: 2ème, 1er, 3ème)
+			const positions = [1, 0, 2];
+			const heights = ['150px', '200px', '100px'];
+			const medals = ['🥈 2ème', '🥇 1er', '🥉 3ème'];
+			
+			// Créer les podiums
+			positions.forEach((pos, index) => {
+				if (winners[pos]) {
+					const podiumStep = document.createElement('div');
+					podiumStep.style.width = '200px';
+					podiumStep.style.height = heights[index];
+					podiumStep.style.backgroundColor = pos === 0 ? '#FFD700' : pos === 1 ? '#C0C0C0' : '#CD7F32';
+					podiumStep.style.display = 'flex';
+					podiumStep.style.flexDirection = 'column';
+					podiumStep.style.justifyContent = 'flex-start';
+					podiumStep.style.alignItems = 'center';
+					podiumStep.style.padding = '10px';
+					podiumStep.style.margin = '0 10px';
+					podiumStep.style.borderRadius = '10px 10px 0 0';
+					
+					const medal = document.createElement('div');
+					medal.textContent = medals[index];
+					medal.style.fontSize = '24px';
+					medal.style.marginBottom = '10px';
+					podiumStep.appendChild(medal);
+					
+					const name = document.createElement('div');
+					name.textContent = winners[pos].username;
+					name.style.color = 'white';
+					name.style.fontWeight = 'bold';
+					name.style.fontSize = '18px';
+					podiumStep.appendChild(name);
+					
+					const score = document.createElement('div');
+					score.textContent = `Score: ${winners[pos].score}`;
+					score.style.color = 'white';
+					podiumStep.appendChild(score);
+					
+					podiumContainer.appendChild(podiumStep);
+				}
+			});
+			
+			// Afficher l'écran de podium
+			podiumScreen.style.display = 'flex';
+		}
+
+		// Masquer le podium
+		function hidePodium() {
+			const podiumScreen = document.getElementById('podium-screen');
+			if (podiumScreen) {
+				podiumScreen.style.display = 'none';
+			}
+		}
+
+		// Afficher un message de redémarrage
+		function showRestartingMessage() {
+			// Créer une notification temporaire
+			const notification = document.createElement('div');
+			notification.style.position = 'absolute';
+			notification.style.top = '50%';
+			notification.style.left = '50%';
+			notification.style.transform = 'translate(-50%, -50%)';
+			notification.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+			notification.style.color = 'white';
+			notification.style.padding = '20px';
+			notification.style.borderRadius = '5px';
+			notification.style.fontSize = '24px';
+			notification.style.fontWeight = 'bold';
+			notification.style.zIndex = '3000';
+			notification.textContent = 'REDÉMARRAGE DU SERVEUR...';
+			
+			document.body.appendChild(notification);
+			
+			// Supprimer après quelques secondes
+			setTimeout(() => {
+				document.body.removeChild(notification);
+			}, 3000);
+		}
+
+		// Démarrer un compte à rebours
+		function startCountdown(seconds, prefix) {
+			const restartCounter = document.getElementById('restart-counter');
+			if (!restartCounter) return;
+			
+			let remainingSeconds = Math.floor(seconds);
+			
+			const updateCounter = () => {
+				restartCounter.textContent = `${prefix}: ${remainingSeconds}s`;
+				
+				if (remainingSeconds > 0) {
+					remainingSeconds--;
+					setTimeout(updateCounter, 1000);
+				}
+			};
+			
+			updateCounter();
+		}
+
+		// Réinitialiser l'interface utilisateur
+		function resetUI() {
+			// Réinitialiser les statistiques
+			document.getElementById('hp').textContent = '100';
+			document.getElementById('maxhp').textContent = '100';
+			document.getElementById('atk').textContent = '10';
+			document.getElementById('def').textContent = '10';
+			document.getElementById('atkspeed').textContent = '0.5';
+			document.getElementById('range').textContent = '10';
+			document.getElementById('speed').textContent = '0.02';
+			document.getElementById('repair').textContent = '0.1';
+			document.getElementById('processors').textContent = '0';
+			
+			// Mettre à jour le tableau de score
+			updateScoreboard();
+		}
+		// Mettre à jour l'état du jeu
+		function updateGameState(newState) {
+			// Supprimer tous les éléments de jeu existants
+			
+			// Supprimer les processeurs
+			gameMap.processors.forEach(processor => {
+				processor.destroy();
+			});
+			gameMap.processors = [];
+			
+			// Supprimer les canons
+			gameMap.cannons.forEach(cannon => {
+				cannon.destroy();
+			});
+			gameMap.cannons = [];
+			
+			// Supprimer les structures
+			gameMap.structures.forEach(structure => {
+				if (structure.destroy) {
+					structure.destroy();
+				}
+			});
+			gameMap.structures = [];
+			
+			// Supprimer les autres joueurs
+			Object.values(otherPlayers).forEach(otherPlayer => {
+				removeOtherPlayer(otherPlayer.playerId);
+			});
+			
+			// Réinitialiser le joueur principal
+			player.hp = 100;
+			player.maxHp = 100;
+			player.resistance = 10;
+			player.attack = 10;
+			player.attackSpeed = 0.5;
+			player.range = 10;
+			player.speed = 0.02;
+			player.repairSpeed = 0.5;
+			player.baseScale = 1.0;
+			player.processorCounts = {
+				hp: 0,
+				resistance: 0,
+				attack: 0,
+				attackSpeed: 0,
+				range: 0,
+				speed: 0,
+				repairSpeed: 0
+			};
+			player.totalProcessors = 0;
+			player.updateUI();
+			player.setRandomPosition();
+			player.isAlive = true;
+			
+			// Si le joueur était invisible, le rendre visible à nouveau
+			player.mesh.visible = true;
+			
+			// Créer les nouvelles structures et objets
+			if (newState) {
+				// Traiter les structures
+				if (newState.structures) {
+					Object.values(newState.structures).forEach(structureData => {
+						createServerStructure(structureData);
+					});
+				}
+				
+				// Traiter les processeurs
+				if (newState.processors) {
+					Object.values(newState.processors).forEach(processorData => {
+						createServerProcessor(processorData);
+					});
+				}
+				
+				// Traiter les canons
+				if (newState.cannons) {
+					Object.values(newState.cannons).forEach(cannonData => {
+						createServerCannon(cannonData);
+					});
+				}
+			}
+		}
         function animate(time) {
             requestAnimationFrame(animate);
             
