@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Robot Warfare</title>
+    <title>Robot Warfare</title>
     <style>
         body { margin: 0; overflow: hidden; }
         canvas { display: block; }
@@ -42,6 +42,136 @@
             transform: translateY(0);
             transition: opacity 1s, transform 1s;
             z-index: 100;
+        }
+        
+        /* Styles pour le cycle de jeu */
+        .podium-screen {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(to bottom, rgba(0,0,0,0.9), rgba(20,20,50,0.95));
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          z-index: 2000;
+          color: white;
+          font-family: 'Arial', sans-serif;
+        }
+
+        .podium-title {
+          font-size: 42px;
+          margin-bottom: 40px;
+          text-transform: uppercase;
+          text-shadow: 0 0 10px rgba(255,215,0,0.7);
+          animation: glow 2s infinite alternate;
+        }
+
+        @keyframes glow {
+          from {
+            text-shadow: 0 0 10px rgba(255,215,0,0.7);
+          }
+          to {
+            text-shadow: 0 0 20px rgba(255,215,0,1), 0 0 30px gold;
+          }
+        }
+
+        .podium-container {
+          display: flex;
+          justify-content: center;
+          align-items: flex-end;
+          width: 80%;
+          max-width: 800px;
+          height: 350px;
+          margin-bottom: 50px;
+        }
+
+        .podium-step {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          border-radius: 10px 10px 0 0;
+          transition: all 0.5s ease-in-out;
+          box-shadow: 0 0 20px rgba(0,0,0,0.5);
+          overflow: hidden;
+        }
+
+        .podium-position {
+          font-size: 36px;
+          margin: 10px 0;
+        }
+
+        .podium-username {
+          font-size: 22px;
+          font-weight: bold;
+          margin: 5px 0;
+          text-align: center;
+          padding: 0 10px;
+        }
+
+        .podium-score {
+          font-size: 18px;
+          margin: 5px 0 10px 0;
+        }
+
+        .podium-avatar {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          background-color: #333;
+          margin: 10px 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          font-size: 32px;
+        }
+
+        .restart-counter {
+          font-size: 24px;
+          margin-top: 30px;
+          animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+          from {
+            transform: scale(1);
+          }
+          to {
+            transform: scale(1.05);
+          }
+        }
+
+        .game-clock {
+          position: absolute;
+          top: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          background-color: rgba(0, 0, 0, 0.7);
+          color: white;
+          padding: 8px 15px;
+          border-radius: 20px;
+          font-family: 'Arial', sans-serif;
+          font-size: 16px;
+          z-index: 1000;
+          box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        .game-info {
+          display: flex;
+          align-items: center;
+        }
+
+        .time-warning {
+          color: #ff5555;
+          animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+          50% {
+            opacity: 0.5;
+          }
         }
     </style>
 </head>
@@ -3205,8 +3335,6 @@
 		const usernameInput = document.getElementById('username-input');
 		const joinButton = document.getElementById('join-button');
 
-
-
 		// État du jeu
 		let gameStarted = false;
 
@@ -3219,19 +3347,29 @@
 		});
 
 		// Fonction pour rejoindre la partie
-		function joinGame() {
-			// Récupérer le nom d'utilisateur
-			if (usernameInput.value.trim() !== '') {
-				username = usernameInput.value.trim();
-			    player.username = username;
-			}
-			
-			// Masquer l'écran de connexion
-			loginScreen.style.display = 'none';
-			
-			// Démarrer le jeu
-			startGame();
-		}
+        function joinGame() {
+            // Récupérer le nom d'utilisateur
+            if (usernameInput.value.trim() !== '') {
+                username = usernameInput.value.trim();
+                player.username = username;
+            }
+            
+            // Masquer l'écran de connexion
+            loginScreen.style.display = 'none';
+            
+            // Vérifier si la connexion socket est déjà établie
+            if (socket.connected) {
+                console.log("Connexion déjà établie. Démarrage du jeu...");
+                startGame();
+            } else {
+                console.log("En attente de la connexion au serveur...");
+                // Attendre la connexion avant de démarrer le jeu
+                socket.on('connect', () => {
+                    console.log("Connexion établie. Démarrage du jeu...");
+                    startGame();
+                });
+            }
+        }
        
 	   // Fonction pour mettre à jour la caméra
         function updateCamera() {
@@ -3239,57 +3377,10 @@
             cameraController.updateCamera(camera);
         }
 
-        // Boucle d'animation
-        let lastTime = 0;
-        let processorSpawnEnabled = true; // Variable pour activer/désactiver l'apparition des processeurs
-
-		// Stockage des autres joueurs
+        // Stockage des autres joueurs
 		const otherPlayers = {};
 
-		// Référence à l'écran de connexion (à ajouter après le chargement du DOM)
-		document.addEventListener('DOMContentLoaded', () => {
-				
-			// Permettre la validation avec la touche Entrée
-			usernameInput.addEventListener('keypress', (e) => {
-				if (e.key === 'Enter') joinGame();
-			});
-		});
-		
-		document.addEventListener('DOMContentLoaded', createGameCycleUI);
-
-		// Fonction pour mettre à jour le tableau de score
-		function updateScoreboard() {
-			const playersList = document.getElementById('players-list');
-			playersList.innerHTML = '';
-			
-			// Trier les joueurs par score (processeurs collectés)
-			const sortedPlayers = Object.values(otherPlayers).concat(player)
-				.filter(p => p.isAlive !== false)
-				.sort((a, b) => (b.totalProcessors || 0) - (a.totalProcessors || 0));
-			
-			// Ne prendre que les 10 premiers joueurs
-			const top10Players = sortedPlayers.slice(0, 10);
-			
-			top10Players.forEach((p, index) => {
-				const isCurrentPlayer = p === player;
-				const playerDiv = document.createElement('div');
-				playerDiv.style.padding = '5px';
-				playerDiv.style.marginBottom = '5px';
-				playerDiv.style.borderRadius = '3px';
-				playerDiv.style.backgroundColor = isCurrentPlayer ? 'rgba(0, 255, 0, 0.2)' : 'rgba(255, 255, 255, 0.1)';
-				playerDiv.style.display = 'flex';
-				playerDiv.style.justifyContent = 'space-between';
-				
-				// Ajouter le rang dans l'affichage (index + 1 car les indices commencent à 0)
-				playerDiv.innerHTML = `
-					<span><strong>#${index + 1}</strong> ${p.username || 'Joueur inconnu'}</span>
-					<span>${p.totalProcessors || 0} procs</span>
-				`;
-				
-				playersList.appendChild(playerDiv);
-			});
-		}
-		// Gérer les événements de socket.io
+		// Gérer les événements de socket.io pour le cycle de jeu
 		function setupSocketListeners() {
 			// Recevoir l'état initial du jeu
 			socket.on('gameState', (state) => {
@@ -3297,10 +3388,16 @@
 				
 				// Traiter les structures statiques
 				if (state.structures) {
+					console.log(`Structures reçues: ${Object.keys(state.structures).length}`);
+					
 					Object.values(state.structures).forEach(structureData => {
+						console.log(`Création de la structure ${structureData.id} de type ${structureData.type}`);
 						createServerStructure(structureData);
 					});
+				} else {
+					console.warn("Aucune structure reçue du serveur!");
 				}
+				
 				// Traiter les joueurs existants
 				Object.entries(state.players).forEach(([id, playerData]) => {
 					if (id !== socket.id) {
@@ -3317,8 +3414,50 @@
 				Object.values(state.cannons).forEach(cannonData => {
 					createServerCannon(cannonData);
 				});
+				
+				// Afficher l'horloge si nous recevons aussi des informations sur la partie
+				if (state.gameInfo) {
+					showGameClock(state.gameInfo.endTime);
+				}
 			});
-			
+            
+            // Gestion des événements de cycle de jeu
+            socket.on('gameEnded', (data) => {
+                console.log('La partie est terminée!', data);
+                
+                // Afficher le podium
+                showPodium(data.winners);
+                
+                // Démarrer le compte à rebours pour le redémarrage
+                startCountdown(data.duration / 1000, 'Redémarrage dans');
+            });
+
+            socket.on('gameRestarting', (data) => {
+                console.log('Redémarrage imminent...');
+                
+                // Avertir le joueur du redémarrage imminent
+                showRestartingMessage();
+                
+                // Démarrer un compte à rebours court
+                startCountdown(data.duration / 1000, 'Redémarrage dans');
+            });
+
+            socket.on('gameRestarted', (data) => {
+                console.log('Nouvelle partie!', data);
+                
+                // Masquer le podium
+                hidePodium();
+                
+                // Réinitialiser l'interface utilisateur
+                resetUI();
+                
+                // Mettre à jour l'état du jeu
+                updateGameState(data.gameState);
+                
+                // Afficher l'horloge de la partie
+                showGameClock(data.gameInfo.endTime);
+            });
+
 			// Un nouveau joueur rejoint
 			socket.on('playerJoined', (playerData) => {
 				console.log('Nouveau joueur rejoint:', playerData);
@@ -3439,77 +3578,6 @@
 					structure.die();
 				}
 			});
-			// Gestion des événements de cycle de jeu
-			socket.on('gameEnded', (data) => {
-				console.log('La partie est terminée!', data);
-				
-				// Afficher le podium
-				showPodium(data.winners);
-				
-				// Démarrer le compte à rebours pour le redémarrage
-				startCountdown(data.duration / 1000, 'Redémarrage dans');
-			});
-
-			socket.on('gameRestarting', (data) => {
-				console.log('Redémarrage imminent...');
-				
-				// Avertir le joueur du redémarrage imminent
-				showRestartingMessage();
-				
-				// Démarrer un compte à rebours court
-				startCountdown(data.duration / 1000, 'Redémarrage dans');
-			});
-
-			socket.on('gameRestarted', (data) => {
-				console.log('Nouvelle partie!', data);
-				
-				// Masquer le podium
-				hidePodium();
-				
-				// Réinitialiser l'interface utilisateur
-				resetUI();
-				
-				// Mettre à jour l'état du jeu
-				updateGameState(data.gameState);
-				
-				// Afficher l'horloge de la partie
-				showGameClock(data.gameInfo.endTime);
-			});
-
-			// Ajouter cette fonction pour recevoir l'état du jeu au début
-			socket.on('gameState', (state) => {
-				console.log('État initial du jeu reçu:', state);
-				
-				// Traiter les structures statiques
-				if (state.structures) {
-					Object.values(state.structures).forEach(structureData => {
-						createServerStructure(structureData);
-					});
-				}
-				
-				// Traiter les joueurs existants
-				Object.entries(state.players).forEach(([id, playerData]) => {
-					if (id !== socket.id) {
-						createOtherPlayer(id, playerData);
-					}
-				});
-				
-				// Traiter les processeurs existants
-				Object.values(state.processors).forEach(processorData => {
-					createServerProcessor(processorData);
-				});
-				
-				// Traiter les canons existants
-				Object.values(state.cannons).forEach(cannonData => {
-					createServerCannon(cannonData);
-				});
-				
-				// Afficher l'horloge si nous recevons aussi des informations sur la partie
-				if (state.gameInfo) {
-					showGameClock(state.gameInfo.endTime);
-				}
-			});
-			
 		}
 
 		function startGame() {
@@ -3519,11 +3587,75 @@
 			// Marquer le jeu comme démarré
 			gameStarted = true;
 			
+			// Informer le serveur que ce joueur rejoint la partie
+			console.log("Envoi des informations du joueur au serveur...");
+			socket.emit('playerJoin', {
+				position: {
+					x: player.mesh.position.x,
+					y: player.mesh.position.y,
+					z: player.mesh.position.z
+				},
+				rotation: player.mesh.rotation.y,
+				direction: {
+					x: player.direction.x,
+					y: player.direction.y,
+					z: player.direction.z
+				},
+				stats: {
+					resistance: player.resistance,
+					attack: player.attack,
+					attackSpeed: player.attackSpeed,
+					range: player.range,
+					speed: player.speed,
+					repairSpeed: player.repairSpeed,
+					processorCounts: player.processorCounts
+				},
+				hp: player.hp,
+				maxHp: player.maxHp,
+				username: player.username
+			});
+			
 			// Ajouter un tag de nom au joueur principal
 			addPlayerNameTag(player);
 			
 			// Mettre à jour le tableau de score
 			updateScoreboard();
+			
+			// Créer l'interface pour le cycle de jeu
+			createGameCycleUI();
+		}
+
+		// Fonction pour mettre à jour le tableau de score
+		function updateScoreboard() {
+			const playersList = document.getElementById('players-list');
+			playersList.innerHTML = '';
+			
+			// Trier les joueurs par score (processeurs collectés)
+			const sortedPlayers = Object.values(otherPlayers).concat(player)
+				.filter(p => p.isAlive !== false)
+				.sort((a, b) => (b.totalProcessors || 0) - (a.totalProcessors || 0));
+			
+			// Ne prendre que les 10 premiers joueurs
+			const top10Players = sortedPlayers.slice(0, 10);
+			
+			top10Players.forEach((p, index) => {
+				const isCurrentPlayer = p === player;
+				const playerDiv = document.createElement('div');
+				playerDiv.style.padding = '5px';
+				playerDiv.style.marginBottom = '5px';
+				playerDiv.style.borderRadius = '3px';
+				playerDiv.style.backgroundColor = isCurrentPlayer ? 'rgba(0, 255, 0, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+				playerDiv.style.display = 'flex';
+				playerDiv.style.justifyContent = 'space-between';
+				
+				// Ajouter le rang dans l'affichage (index + 1 car les indices commencent à 0)
+				playerDiv.innerHTML = `
+					<span><strong>#${index + 1}</strong> ${p.username || 'Joueur inconnu'}</span>
+					<span>${p.totalProcessors || 0} procs</span>
+				`;
+				
+				playersList.appendChild(playerDiv);
+			});
 		}
 
 		// Fonction pour créer un autre joueur
@@ -3805,151 +3937,110 @@
 				otherPlayers[projectileData.ownerId].projectiles.push(projectile);
 			}
 		}
-
+		
+		// Créer les éléments d'UI nécessaires au cycle de jeu
 		function createGameCycleUI() {
 			// Créer l'horloge de jeu
 			const gameClock = document.createElement('div');
 			gameClock.id = 'game-clock';
-			gameClock.style.position = 'absolute';
-			gameClock.style.top = '10px';
-			gameClock.style.left = '50%';
-			gameClock.style.transform = 'translateX(-50%)';
-			gameClock.style.color = 'white';
-			gameClock.style.fontFamily = 'Arial, sans-serif';
-			gameClock.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-			gameClock.style.padding = '10px';
-			gameClock.style.borderRadius = '5px';
-			gameClock.style.zIndex = '1000';
-			gameClock.style.display = 'none';
+			gameClock.className = 'game-clock';
 			document.body.appendChild(gameClock);
 			
 			// Créer l'écran de podium
 			const podiumScreen = document.createElement('div');
 			podiumScreen.id = 'podium-screen';
-			podiumScreen.style.position = 'absolute';
-			podiumScreen.style.top = '0';
-			podiumScreen.style.left = '0';
-			podiumScreen.style.width = '100%';
-			podiumScreen.style.height = '100%';
-			podiumScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+			podiumScreen.className = 'podium-screen';
 			podiumScreen.style.display = 'none';
-			podiumScreen.style.justifyContent = 'center';
-			podiumScreen.style.alignItems = 'center';
-			podiumScreen.style.flexDirection = 'column';
-			podiumScreen.style.zIndex = '2000';
 			document.body.appendChild(podiumScreen);
-			
-			// Créer le conteneur du podium
-			const podiumContainer = document.createElement('div');
-			podiumContainer.id = 'podium-container';
-			podiumContainer.style.display = 'flex';
-			podiumContainer.style.justifyContent = 'center';
-			podiumContainer.style.alignItems = 'flex-end';
-			podiumContainer.style.width = '80%';
-			podiumContainer.style.height = '300px';
-			podiumScreen.appendChild(podiumContainer);
-			
-			// Créer le compteur de redémarrage
-			const restartCounter = document.createElement('div');
-			restartCounter.id = 'restart-counter';
-			restartCounter.style.color = 'white';
-			restartCounter.style.fontFamily = 'Arial, sans-serif';
-			restartCounter.style.fontSize = '24px';
-			restartCounter.style.marginTop = '50px';
-			podiumScreen.appendChild(restartCounter);
-		}
-		
-		// Afficher l'horloge de la partie
-		function showGameClock(endTime) {
-			const gameClock = document.getElementById('game-clock');
-			if (!gameClock) return;
-			
-			gameClock.style.display = 'block';
-			
-			// Mettre à jour l'horloge chaque seconde
-			const updateClock = () => {
-				const now = Date.now();
-				const timeLeft = endTime - now;
-				
-				if (timeLeft <= 0) {
-					gameClock.textContent = "Fin de partie!";
-					return;
-				}
-				
-				// Formater le temps restant
-				const minutes = Math.floor(timeLeft / 60000);
-				const seconds = Math.floor((timeLeft % 60000) / 1000);
-				
-				gameClock.textContent = `Temps restant: ${minutes}:${seconds.toString().padStart(2, '0')}`;
-				
-				// Continuer à mettre à jour
-				requestAnimationFrame(updateClock);
-			};
-			
-			updateClock();
 		}
 
 		// Afficher le podium avec les gagnants
 		function showPodium(winners) {
-			const podiumScreen = document.getElementById('podium-screen');
-			const podiumContainer = document.getElementById('podium-container');
-			if (!podiumScreen || !podiumContainer) return;
+			// Supprimer l'ancien podium s'il existe
+			const oldPodium = document.getElementById('podium-screen');
+			if (oldPodium) {
+				document.body.removeChild(oldPodium);
+			}
 			
-			// Vider le contenu précédent
-			podiumContainer.innerHTML = '';
+			// Créer l'écran de podium
+			const podiumScreen = document.createElement('div');
+			podiumScreen.id = 'podium-screen';
+			podiumScreen.className = 'podium-screen';
 			
-			// Créer le titre
+			// Titre
 			const title = document.createElement('h1');
-			title.textContent = "Fin de partie - Podium";
-			title.style.color = 'white';
-			title.style.textAlign = 'center';
-			title.style.marginBottom = '30px';
-			podiumScreen.insertBefore(title, podiumContainer);
+			title.className = 'podium-title';
+			title.textContent = "🏆 Fin de partie - Podium 🏆";
+			podiumScreen.appendChild(title);
 			
-			// Positions des podiums (ordre d'affichage: 2ème, 1er, 3ème)
-			const positions = [1, 0, 2];
-			const heights = ['150px', '200px', '100px'];
-			const medals = ['🥈 2ème', '🥇 1er', '🥉 3ème'];
+			// Conteneur du podium
+			const podiumContainer = document.createElement('div');
+			podiumContainer.className = 'podium-container';
 			
-			// Créer les podiums
-			positions.forEach((pos, index) => {
-				if (winners[pos]) {
-					const podiumStep = document.createElement('div');
-					podiumStep.style.width = '200px';
-					podiumStep.style.height = heights[index];
-					podiumStep.style.backgroundColor = pos === 0 ? '#FFD700' : pos === 1 ? '#C0C0C0' : '#CD7F32';
-					podiumStep.style.display = 'flex';
-					podiumStep.style.flexDirection = 'column';
-					podiumStep.style.justifyContent = 'flex-start';
-					podiumStep.style.alignItems = 'center';
-					podiumStep.style.padding = '10px';
-					podiumStep.style.margin = '0 10px';
-					podiumStep.style.borderRadius = '10px 10px 0 0';
-					
-					const medal = document.createElement('div');
-					medal.textContent = medals[index];
-					medal.style.fontSize = '24px';
-					medal.style.marginBottom = '10px';
-					podiumStep.appendChild(medal);
-					
-					const name = document.createElement('div');
-					name.textContent = winners[pos].username;
-					name.style.color = 'white';
-					name.style.fontWeight = 'bold';
-					name.style.fontSize = '18px';
-					podiumStep.appendChild(name);
-					
-					const score = document.createElement('div');
-					score.textContent = `Score: ${winners[pos].score}`;
-					score.style.color = 'white';
-					podiumStep.appendChild(score);
-					
-					podiumContainer.appendChild(podiumStep);
-				}
+			// Définir l'ordre d'affichage et les caractéristiques
+			const podiumConfig = [
+				{ position: 1, index: 0, height: '280px', medal: '🥇', color: 'linear-gradient(to bottom, #FFD700, #FFA500)', title: '1er' },
+				{ position: 0, index: 1, height: '220px', medal: '🥈', color: 'linear-gradient(to bottom, #C0C0C0, #A9A9A9)', title: '2ème' },
+				{ position: 2, index: 2, height: '180px', medal: '🥉', color: 'linear-gradient(to bottom, #CD7F32, #8B4513)', title: '3ème' }
+			];
+			
+			// Créer chaque marche du podium
+			podiumConfig.forEach(config => {
+				const winner = winners[config.position];
+				if (!winner) return; // Pas de joueur à cette position
+				
+				const podiumStep = document.createElement('div');
+				podiumStep.className = 'podium-step';
+				podiumStep.style.width = '200px';
+				podiumStep.style.height = '0px'; // Démarrer à 0 pour l'animation
+				podiumStep.style.background = config.color;
+				podiumStep.style.margin = '0 10px';
+				
+				// Avatar (utilise la première lettre du nom d'utilisateur)
+				const avatar = document.createElement('div');
+				avatar.className = 'podium-avatar';
+				avatar.textContent = winner.username.charAt(0).toUpperCase();
+				
+				// Position
+				const position = document.createElement('div');
+				position.className = 'podium-position';
+				position.textContent = config.medal;
+				
+				// Nom d'utilisateur
+				const username = document.createElement('div');
+				username.className = 'podium-username';
+				username.textContent = winner.username;
+				
+				// Score
+				const score = document.createElement('div');
+				score.className = 'podium-score';
+				score.textContent = `Score: ${winner.score} points`;
+				
+				// Ajouter les éléments à la marche
+				podiumStep.appendChild(position);
+				podiumStep.appendChild(avatar);
+				podiumStep.appendChild(username);
+				podiumStep.appendChild(score);
+				
+				// Ajouter au conteneur
+				podiumContainer.appendChild(podiumStep);
+				
+				// Animer après un court délai (animation d'apparition)
+				setTimeout(() => {
+					podiumStep.style.height = config.height;
+				}, 500 + config.index * 300);
 			});
 			
-			// Afficher l'écran de podium
-			podiumScreen.style.display = 'flex';
+			podiumScreen.appendChild(podiumContainer);
+			
+			// Compteur de redémarrage
+			const restartCounter = document.createElement('div');
+			restartCounter.id = 'restart-counter';
+			restartCounter.className = 'restart-counter';
+			podiumScreen.appendChild(restartCounter);
+			
+			// Ajouter à la page
+			document.body.appendChild(podiumScreen);
 		}
 
 		// Masquer le podium
@@ -3958,31 +4049,6 @@
 			if (podiumScreen) {
 				podiumScreen.style.display = 'none';
 			}
-		}
-
-		// Afficher un message de redémarrage
-		function showRestartingMessage() {
-			// Créer une notification temporaire
-			const notification = document.createElement('div');
-			notification.style.position = 'absolute';
-			notification.style.top = '50%';
-			notification.style.left = '50%';
-			notification.style.transform = 'translate(-50%, -50%)';
-			notification.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
-			notification.style.color = 'white';
-			notification.style.padding = '20px';
-			notification.style.borderRadius = '5px';
-			notification.style.fontSize = '24px';
-			notification.style.fontWeight = 'bold';
-			notification.style.zIndex = '3000';
-			notification.textContent = 'REDÉMARRAGE DU SERVEUR...';
-			
-			document.body.appendChild(notification);
-			
-			// Supprimer après quelques secondes
-			setTimeout(() => {
-				document.body.removeChild(notification);
-			}, 3000);
 		}
 
 		// Démarrer un compte à rebours
@@ -4004,6 +4070,84 @@
 			updateCounter();
 		}
 
+		// Afficher l'horloge de la partie
+		function showGameClock(endTime) {
+			const gameClock = document.getElementById('game-clock');
+			if (!gameClock) return;
+			
+			gameClock.style.display = 'block';
+			
+			// Mettre à jour l'horloge chaque seconde
+			const updateClock = () => {
+				const now = Date.now();
+				const timeLeft = endTime - now;
+				
+				if (timeLeft <= 0) {
+					gameClock.innerHTML = "<div class='game-info time-warning'>⏱️ Fin de partie!</div>";
+					return;
+				}
+				
+				// Formater le temps restant
+				const minutes = Math.floor(timeLeft / 60000);
+				const seconds = Math.floor((timeLeft % 60000) / 1000);
+				const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+				
+				// Ajouter une classe d'alerte si moins de 5 minutes
+				const isWarning = timeLeft < 5 * 60 * 1000;
+				
+				gameClock.innerHTML = `
+					<div class='game-info ${isWarning ? "time-warning" : ""}'>
+						⏱️ Temps restant: ${timeString}
+					</div>
+				`;
+				
+				// Continuer à mettre à jour
+				requestAnimationFrame(updateClock);
+			};
+			
+			updateClock();
+		}
+
+		// Afficher un message de redémarrage
+		function showRestartingMessage() {
+			const notification = document.createElement('div');
+			notification.style.position = 'absolute';
+			notification.style.top = '50%';
+			notification.style.left = '50%';
+			notification.style.transform = 'translate(-50%, -50%)';
+			notification.style.backgroundColor = 'rgba(200, 0, 0, 0.9)';
+			notification.style.color = 'white';
+			notification.style.padding = '30px 50px';
+			notification.style.borderRadius = '10px';
+			notification.style.fontSize = '32px';
+			notification.style.fontWeight = 'bold';
+			notification.style.zIndex = '3000';
+			notification.style.boxShadow = '0 0 30px rgba(255, 0, 0, 0.7)';
+			notification.style.textAlign = 'center';
+			notification.style.animation = 'pulse 0.5s infinite alternate';
+			notification.innerHTML = '⚠️ REDÉMARRAGE DU SERVEUR<br>Préparation de la nouvelle partie...';
+			
+			// Ajouter l'animation
+			const style = document.createElement('style');
+			style.textContent = `
+				@keyframes pulse {
+					from { transform: translate(-50%, -50%) scale(1); }
+					to { transform: translate(-50%, -50%) scale(1.05); }
+				}
+			`;
+			document.head.appendChild(style);
+			
+			document.body.appendChild(notification);
+			
+			// Supprimer après quelques secondes
+			setTimeout(() => {
+				document.body.removeChild(notification);
+				if (style.parentNode) {
+					document.head.removeChild(style);
+				}
+			}, 4000);
+		}
+
 		// Réinitialiser l'interface utilisateur
 		function resetUI() {
 			// Réinitialiser les statistiques
@@ -4020,6 +4164,7 @@
 			// Mettre à jour le tableau de score
 			updateScoreboard();
 		}
+
 		// Mettre à jour l'état du jeu
 		function updateGameState(newState) {
 			// Supprimer tous les éléments de jeu existants
@@ -4100,6 +4245,11 @@
 				}
 			}
 		}
+
+        // Boucle d'animation
+        let lastTime = 0;
+        let processorSpawnEnabled = true; // Variable pour activer/désactiver l'apparition des processeurs
+
         function animate(time) {
             requestAnimationFrame(animate);
             
