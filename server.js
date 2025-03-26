@@ -11,7 +11,28 @@ const io = new Server(server);
 // Servir les fichiers statiques
 app.use(express.static(path.join(__dirname, 'public')));
 
-// État du jeu
+// États du jeu
+const GameState = {
+  PLAYING: 'playing',    // Jeu en cours (59 minutes)
+  PODIUM: 'podium',      // Affichage du podium (1 minute)
+  RESTARTING: 'restarting' // Redémarrage (quelques secondes)
+};
+
+// Configuration des durées (en millisecondes)
+const GAME_DURATION = 59 * 60 * 1000;  // 59 minutes 
+const PODIUM_DURATION = 60 * 1000;     // 1 minute
+const RESTART_DURATION = 5 * 1000;     // 5 secondes pour le redémarrage
+
+// État actuel du jeu
+let currentGameState = {
+  state: GameState.PLAYING,
+  startTime: Date.now(),
+  endTime: Date.now() + GAME_DURATION,
+  winners: [],
+  gameId: generateGameId()
+};
+
+// État du jeu (données)
 const gameState = {
     players: {},
     processors: {},
@@ -19,6 +40,182 @@ const gameState = {
     projectiles: {},
     structures: {} 
 };
+
+// ID des processeurs et canons
+let processorId = 0;
+let cannonId = 0;
+let projectileId = 0;
+
+// Fonction pour générer un ID unique pour chaque partie
+function generateGameId() {
+  return `game-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+}
+
+// Gestion du cycle de jeu
+function startGameCycle() {
+  console.log(`Nouvelle partie démarrée: ${currentGameState.gameId}`);
+  console.log(`La partie se terminera à: ${new Date(currentGameState.endTime).toLocaleTimeString()}`);
+  
+  // Planifier la fin de la partie
+  setTimeout(() => {
+    endGame();
+  }, GAME_DURATION);
+}
+
+// Fonction pour terminer la partie et afficher le podium
+function endGame() {
+  currentGameState.state = GameState.PODIUM;
+  currentGameState.winners = determineWinners();
+  
+  console.log('Partie terminée. Affichage du podium...');
+  console.log('Gagnants:', currentGameState.winners.map(w => w.username));
+  
+  // Informer tous les joueurs de la fin de partie
+  io.emit('gameEnded', {
+    winners: currentGameState.winners,
+    duration: PODIUM_DURATION
+  });
+  
+  // Planifier le redémarrage
+  setTimeout(() => {
+    prepareRestart();
+  }, PODIUM_DURATION);
+}
+
+// Préparer le redémarrage de la partie
+function prepareRestart() {
+  currentGameState.state = GameState.RESTARTING;
+  
+  console.log('Préparation du redémarrage...');
+  
+  // Informer tous les joueurs du redémarrage imminent
+  io.emit('gameRestarting', {
+    duration: RESTART_DURATION
+  });
+  
+  // Planifier le redémarrage effectif
+  setTimeout(() => {
+    restartGame();
+  }, RESTART_DURATION);
+}
+
+// Redémarrer la partie
+function restartGame() {
+  console.log('Redémarrage de la partie...');
+  
+  // Réinitialiser l'état du jeu
+  resetGameState();
+  
+  // Informer tous les joueurs du redémarrage
+  io.emit('gameRestarted', {
+    gameState: gameState,
+    gameInfo: {
+      gameId: currentGameState.gameId,
+      startTime: currentGameState.startTime,
+      endTime: currentGameState.endTime
+    }
+  });
+  
+  // Démarrer un nouveau cycle
+  startGameCycle();
+}
+
+// Déterminer les 3 meilleurs joueurs
+function determineWinners() {
+  // Convertir l'objet joueurs en tableau
+  const playerArray = Object.values(gameState.players);
+  
+  // Trier par nombre de processeurs (ou un autre critère de score)
+  const sortedPlayers = playerArray.sort((a, b) => {
+    // Calculer le score total (somme des processeurs)
+    const scoreA = a.stats && a.stats.processorCounts ? 
+      Object.values(a.stats.processorCounts).reduce((sum, count) => sum + count, 0) : 0;
+    
+    const scoreB = b.stats && b.stats.processorCounts ? 
+      Object.values(b.stats.processorCounts).reduce((sum, count) => sum + count, 0) : 0;
+    
+    return scoreB - scoreA; // Ordre décroissant
+  });
+  
+  // Retourner les 3 premiers (ou moins s'il y a moins de 3 joueurs)
+  return sortedPlayers.slice(0, 3).map(player => ({
+    id: player.id,
+    username: player.username,
+    score: player.stats && player.stats.processorCounts ? 
+      Object.values(player.stats.processorCounts).reduce((sum, count) => sum + count, 0) : 0,
+    stats: player.stats
+  }));
+}
+
+// Réinitialiser l'état du jeu
+function resetGameState() {
+  // Sauvegarder la liste des joueurs
+  const connectedPlayers = {...gameState.players};
+  
+  // Réinitialiser l'état du jeu
+  gameState.processors = {};
+  gameState.cannons = {};
+  gameState.projectiles = {};
+  
+  // Régénérer les structures
+  gameState.structures = {};
+  generateStaticStructures();
+  
+  // Réinitialiser les joueurs avec leur position et stats par défaut
+  Object.keys(connectedPlayers).forEach(playerId => {
+    gameState.players[playerId] = {
+      id: playerId,
+      position: generateRandomPosition(),
+      rotation: Math.random() * Math.PI * 2,
+      direction: { x: 0, y: 0, z: -1 },
+      stats: {
+        resistance: 10,
+        attack: 10,
+        attackSpeed: 0.5,
+        range: 10,
+        speed: 0.02,
+        repairSpeed: 0.5,
+        processorCounts: {
+          hp: 0,
+          resistance: 0,
+          attack: 0,
+          attackSpeed: 0,
+          range: 0,
+          speed: 0,
+          repairSpeed: 0
+        }
+      },
+      hp: 100,
+      maxHp: 100,
+      isAlive: true,
+      username: connectedPlayers[playerId].username
+    };
+  });
+  
+  // Mise à jour de l'état de la partie actuelle
+  currentGameState = {
+    state: GameState.PLAYING,
+    startTime: Date.now(),
+    endTime: Date.now() + GAME_DURATION,
+    winners: [],
+    gameId: generateGameId()
+  };
+  
+  // Réinitialiser les compteurs d'IDs
+  processorId = 0;
+  cannonId = 0;
+  projectileId = 0;
+}
+
+// Fonction utilitaire pour générer une position aléatoire sur la carte
+function generateRandomPosition() {
+  // Ajuster selon les dimensions de votre carte
+  return {
+    x: Math.random() * 100 - 50, // -50 à 50
+    y: 0.5,                      // Hauteur fixe
+    z: Math.random() * 100 - 50  // -50 à 50
+  };
+}
 
 // fonction pour générer les structures une seule fois au démarrage du serveur
 function generateStaticStructures() {
@@ -55,17 +252,28 @@ function generateStaticStructures() {
 // Appeler cette fonction au démarrage du serveur
 generateStaticStructures();
 
-// ID des processeurs et canons
-let processorId = 0;
-let cannonId = 0;
-let projectileId = 0;
-
 // Gérer les connexions WebSocket
 io.on('connection', (socket) => {
   console.log(`Nouveau joueur connecté: ${socket.id}`);
   
-  // Envoyer l'état actuel du jeu au nouveau joueur
-  socket.emit('gameState', gameState);
+  // Envoyer l'état actuel du jeu et les informations de la partie au nouveau joueur
+  socket.emit('gameState', {
+    ...gameState,
+    gameInfo: {
+      state: currentGameState.state,
+      gameId: currentGameState.gameId,
+      startTime: currentGameState.startTime,
+      endTime: currentGameState.endTime
+    }
+  });
+  
+  // Si la partie est en mode podium, envoyer aussi les gagnants
+  if (currentGameState.state === GameState.PODIUM) {
+    socket.emit('gameEnded', {
+      winners: currentGameState.winners,
+      duration: currentGameState.endTime - Date.now()
+    });
+  }
   
   // Traiter la création d'un nouveau joueur
   socket.on('playerJoin', (playerData) => {
@@ -92,31 +300,31 @@ io.on('connection', (socket) => {
     socket.emit('playerList', gameState.players);
   });
   
-	socket.on('structureDamaged', (data) => {
-		if (gameState.structures[data.structureId]) {
-			// Appliquer les dégâts
-			gameState.structures[data.structureId].hp -= data.damage;
-			
-			// Vérifier si la structure est détruite
-			if (gameState.structures[data.structureId].hp <= 0) {
-				gameState.structures[data.structureId].hp = 0;
-				gameState.structures[data.structureId].destroyed = true;
-				
-				// Informer tous les joueurs
-				io.emit('structureDestroyed', {
-					id: data.structureId,
-					position: gameState.structures[data.structureId].position
-				});
-			} else {
-				// Informer tous les joueurs des dégâts
-				io.emit('structureDamaged', {
-					id: data.structureId,
-					damage: data.damage,
-					hp: gameState.structures[data.structureId].hp
-				});
-			}
-		}
-	});  
+  socket.on('structureDamaged', (data) => {
+    if (gameState.structures[data.structureId]) {
+        // Appliquer les dégâts
+        gameState.structures[data.structureId].hp -= data.damage;
+        
+        // Vérifier si la structure est détruite
+        if (gameState.structures[data.structureId].hp <= 0) {
+            gameState.structures[data.structureId].hp = 0;
+            gameState.structures[data.structureId].destroyed = true;
+            
+            // Informer tous les joueurs
+            io.emit('structureDestroyed', {
+                id: data.structureId,
+                position: gameState.structures[data.structureId].position
+            });
+        } else {
+            // Informer tous les joueurs des dégâts
+            io.emit('structureDamaged', {
+                id: data.structureId,
+                damage: data.damage,
+                hp: gameState.structures[data.structureId].hp
+            });
+        }
+    }
+  });  
   
   // Mettre à jour la position du joueur
   socket.on('playerUpdate', (playerData) => {
@@ -209,6 +417,18 @@ io.on('connection', (socket) => {
         const statToUpdate = data.type;
         const boostValue = data.boost;
         
+        // S'assurer que les stats et processorCounts existent
+        if (!gameState.players[socket.id].stats) {
+          gameState.players[socket.id].stats = {};
+        }
+        
+        if (!gameState.players[socket.id].stats.processorCounts) {
+          gameState.players[socket.id].stats.processorCounts = {
+            hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
+            range: 0, speed: 0, repairSpeed: 0
+          };
+        }
+        
         switch(statToUpdate) {
           case 'hp':
             gameState.players[socket.id].maxHp += boostValue;
@@ -223,6 +443,9 @@ io.on('connection', (socket) => {
             gameState.players[socket.id].stats[statToUpdate] += boostValue;
             break;
         }
+        
+        // Incrémenter le compteur de processeurs
+        gameState.players[socket.id].stats.processorCounts[statToUpdate]++;
         
         // Diffuser la mise à jour des statistiques
         io.emit('playerStatsUpdated', {
@@ -251,6 +474,9 @@ io.on('connection', (socket) => {
 
 // Fonction pour créer périodiquement des processeurs
 function spawnProcessors() {
+  // Ne pas spawner de nouveaux processeurs pendant le podium ou le redémarrage
+  if (currentGameState.state !== GameState.PLAYING) return;
+
   // Types de processeurs
   const processorTypes = [
     'hp', 'resistance', 'attack', 'attackSpeed', 
@@ -292,6 +518,9 @@ function spawnProcessors() {
 
 // Fonction pour créer périodiquement des canons
 function spawnCannons() {
+  // Ne pas spawner de nouveaux canons pendant le podium ou le redémarrage
+  if (currentGameState.state !== GameState.PLAYING) return;
+
   // Limiter le nombre de canons présents dans le jeu
   if (Object.keys(gameState.cannons).length < 20) {
     const id = `cannon-${cannonId++}`;
@@ -317,6 +546,8 @@ function spawnDroppedProcessors(playerId, position) {
   
   // Pour chaque type de processeur possédé par le joueur
   const playerStats = gameState.players[playerId].stats;
+  if (!playerStats || !playerStats.processorCounts) return;
+  
   const processorCounts = playerStats.processorCounts;
   
   Object.entries(processorCounts).forEach(([type, count]) => {
@@ -374,4 +605,6 @@ setInterval(spawnCannons, CANNON_SPAWN_INTERVAL);
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
+  // Démarrer le cycle de jeu
+  startGameCycle();
 });
