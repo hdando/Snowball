@@ -1259,22 +1259,24 @@
 			takeDamage(amount) {
 				if (!this.isAlive) return;
 				
-				// Réduire les points de vie
-				this.hp -= amount;
-				console.log(`Arbre touché! Dégâts: ${amount}, HP restants: ${this.hp}`);
+				// Pour le joueur principal uniquement, informer le serveur
+				if (player.isMainPlayer) {
+					socket.emit('structureDamaged', {
+						structureId: this.id,
+						damage: amount,
+						position: {
+							x: this.mesh.position.x,
+							y: this.mesh.position.y,
+							z: this.mesh.position.z
+						}
+					});
+				}
 				
 				// Afficher le texte des dégâts
 				createDamageText(this.mesh.position, amount);
 				
 				// Effet visuel de dégâts
 				this.showDamageEffect();
-				
-				// Vérifier si l'arbre est détruit
-				if (this.hp <= 0) {
-					console.log("L'arbre est détruit!");
-					this.hp = 0;
-					this.die();
-				}
 			}
 			
 			// Effet visuel pour les dégâts
@@ -1341,7 +1343,7 @@
                 this.createBorders(scene);
                 
 				//Créer les structures
-				this.createStructures();
+				//this.createStructures();
 				
                 // Grille pour aider à visualiser l'espace
                 const gridHelper = new THREE.GridHelper(Math.max(this.width, this.height), Math.max(this.width, this.height) / 5);
@@ -3023,6 +3025,58 @@
 			}
 		}    
 		
+		function createServerStructure(structureData) {
+			// Créer les structures en fonction de leur type
+			switch(structureData.type) {
+				case 'waterTower':
+					createServerWaterTower(structureData);
+					break;
+				case 'tree':
+					createServerTree(structureData);
+					break;
+			}
+		}
+
+		function createServerWaterTower(structureData) {
+			const position = new THREE.Vector3(
+				structureData.position.x,
+				structureData.position.y,
+				structureData.position.z
+			);
+			
+			const waterTower = new WaterTower(scene, position, collisionSystem);
+			waterTower.id = structureData.id;
+			
+			// Ajouter à la liste des structures de la carte
+			gameMap.structures.push(waterTower);
+		}
+
+		function createServerTree(structureData) {
+			const position = new THREE.Vector3(
+				structureData.position.x,
+				structureData.position.y,
+				structureData.position.z
+			);
+			
+			const tree = new Tree(scene, position, collisionSystem);
+			tree.id = structureData.id;
+			
+			// Mettre à jour les points de vie si fournis
+			if (structureData.hp !== undefined) {
+				tree.hp = structureData.hp;
+				tree.maxHp = structureData.maxHp || tree.maxHp;
+			}
+			
+			// Marquer comme détruit si nécessaire
+			if (structureData.destroyed) {
+				tree.isAlive = false;
+				tree.die();
+			}
+			
+			// Ajouter aux listes
+			gameMap.trees.push(tree);
+			gameMap.structures.push(tree);
+		}
 		// Configuration de la scène
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);  // Ciel bleu
@@ -3240,6 +3294,12 @@
 			socket.on('gameState', (state) => {
 				console.log('État initial du jeu reçu:', state);
 				
+				// Traiter les structures statiques
+				if (state.structures) {
+					Object.values(state.structures).forEach(structureData => {
+						createServerStructure(structureData);
+					});
+				}
 				// Traiter les joueurs existants
 				Object.entries(state.players).forEach(([id, playerData]) => {
 					if (id !== socket.id) {
@@ -3359,6 +3419,26 @@
 				}
 				updateScoreboard();
 			});
+			
+			// Ajouter des gestionnaires pour les dégâts aux structures
+			socket.on('structureDamaged', (data) => {
+				// Trouver la structure dans la liste
+				const structure = gameMap.structures.find(s => s.id === data.id);
+				if (structure && structure.takeDamage) {
+					structure.hp = data.hp;
+					structure.showDamageEffect();
+					createDamageText(structure.mesh.position, data.damage);
+				}
+			});
+			
+			socket.on('structureDestroyed', (data) => {
+				// Trouver la structure dans la liste
+				const structure = gameMap.structures.find(s => s.id === data.id);
+				if (structure && structure.die) {
+					structure.die();
+				}
+			});
+			
 		}
 
 		function startGame() {
@@ -3673,20 +3753,13 @@
             player.repair(deltaTime);
             
             // Mettre à jour les processeurs sur la carte
-            if (processorSpawnEnabled) {
-                gameMap.updateProcessors(deltaTime);
-                // Mise à jour des canons
-                gameMap.updateCanons(deltaTime);
-            } else {
-                // Mettre à jour seulement les processeurs existants sans en créer de nouveaux
-                for (let i = gameMap.processors.length - 1; i >= 0; i--) {
-                    gameMap.processors[i].update();
-                }
-                // Mettre à jour seulement les canons existants
-                for (let i = gameMap.cannons.length - 1; i >= 0; i--) {
-                    gameMap.cannons[i].update();
-                }
-            }
+			for (let i = gameMap.processors.length - 1; i >= 0; i--) {
+				gameMap.processors[i].update();
+			}
+			// Mettre à jour seulement les canons existants
+			for (let i = gameMap.cannons.length - 1; i >= 0; i--) {
+				gameMap.cannons[i].update();
+			}
 			
 			// Mettre à jour les autres joueurs
 			for (const id in otherPlayers) {
