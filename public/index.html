@@ -2353,16 +2353,23 @@
 					console.log("Attaque! Puissance:", this.attack, "Portée:", this.range);
 					
 					// Créer un projectile dans la direction que regarde le joueur
-					const projectile = this.fireProjectile();
-					
-					// Si c'est le joueur principal, informer le serveur
-					if (this.isMainPlayer) {
-						socket.emit('playerShoot', {
-							position: projectile.group.position,
-							direction: projectile.direction,
-							damage: this.attack,
-							range: this.range
-						});
+					try {
+						const projectile = this.fireProjectile();
+						
+						// Vérifier que le projectile a bien été créé
+						if (projectile && projectile.group) {
+							// Si c'est le joueur principal, informer le serveur
+							if (this.isMainPlayer) {
+								socket.emit('playerShoot', {
+									position: projectile.group.position,
+									direction: projectile.direction,
+									damage: this.attack,
+									range: this.range
+								});
+							}
+						}
+					} catch (error) {
+						console.error("Erreur lors du tir:", error);
 					}
 					
 					// Mettre en place le cooldown
