@@ -6,7 +6,14 @@ const path = require('path');
 // Créer l'application Express
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000  // Augmenter le timeout
+});
 
 // Servir les fichiers statiques
 app.use(express.static(path.join(__dirname, 'public')));
@@ -484,7 +491,7 @@ function spawnProcessors() {
   ];
   
   // Limiter le nombre de processeurs présents dans le jeu
-  if (Object.keys(gameState.processors).length < 500) {
+  if (Object.keys(gameState.processors).length < 10000) {
     const type = processorTypes[Math.floor(Math.random() * processorTypes.length)];
     const id = `processor-${processorId++}`;
     
@@ -596,7 +603,7 @@ function spawnDroppedProcessors(playerId, position) {
 
 // Démarrer les intervalles pour créer des objets
 const PROCESSOR_SPAWN_INTERVAL = 1000; // 1 seconde
-const CANNON_SPAWN_INTERVAL = 5000; // 5 secondes
+const CANNON_SPAWN_INTERVAL = 15000; // 15 secondes
 
 setInterval(spawnProcessors, PROCESSOR_SPAWN_INTERVAL);
 setInterval(spawnCannons, CANNON_SPAWN_INTERVAL);
