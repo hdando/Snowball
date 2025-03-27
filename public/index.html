@@ -3324,8 +3324,9 @@
                 keys[event.key] = true;
                 event.preventDefault(); // Empêcher le défilement de la page avec les flèches
             }
-            
-		// Contrôles de la caméra
+        });
+
+		// Touches pour changer de mode
 		document.addEventListener('keydown', (event) => {
 			if (event.key === 'c' || event.key === 'C') {
 				this.toggleCameraMode();
