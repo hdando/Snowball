@@ -236,7 +236,7 @@ function determineWinners() {
     stats: player.stats
   }));
 }
-
+  
 // Réinitialiser l'état du jeu
 function resetGameState() {
   // Sauvegarder la liste des joueurs
