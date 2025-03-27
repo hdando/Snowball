@@ -1922,37 +1922,6 @@
 				// Mise à jour de l'interface utilisateur (uniquement pour le joueur principal)
 				if (this.isMainPlayer) {
 					this.updateUI();
-					
-					// Envoyer les informations initiales au serveur
-					if (socket && socket.connected) {
-						socket.emit('playerJoin', {
-							position: {
-								x: this.mesh.position.x,
-								y: this.mesh.position.y,
-								z: this.mesh.position.z
-							},
-							rotation: this.mesh.rotation.y,
-							direction: {
-								x: this.direction.x,
-								y: this.direction.y,
-								z: this.direction.z
-							},
-							stats: {
-								resistance: this.resistance,
-								attack: this.attack,
-								attackSpeed: this.attackSpeed,
-								range: this.range,
-								speed: this.speed,
-								repairSpeed: this.repairSpeed,
-								processorCounts: this.processorCounts
-							},
-							hp: this.hp,
-							maxHp: this.maxHp,
-							username: this.username
-						});
-					} else {
-						console.warn("Socket non disponible ou non connecté. Impossible d'envoyer les informations du joueur au serveur.");
-					}
 				}
 			}
 			
