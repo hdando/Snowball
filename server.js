@@ -305,6 +305,33 @@ io.on('connection', (socket) => {
     
     // Envoyer la liste complète des joueurs au nouveau joueur
     socket.emit('playerList', gameState.players);
+	
+	// Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
+	socket.on('requestGameState', () => {
+		console.log(`Joueur ${socket.id} demande un rafraîchissement de l'état du jeu`);
+		
+		// Envoyer l'état actuel du jeu et les informations de la partie au joueur
+		socket.emit('gameState', {
+		  players: gameState.players,
+		  processors: gameState.processors,
+		  cannons: gameState.cannons,
+		  projectiles: gameState.projectiles,
+		  structures: gameState.structures,
+		  gameInfo: {
+			state: currentGameState.state,
+			gameId: currentGameState.gameId,
+			startTime: currentGameState.startTime,
+			endTime: currentGameState.endTime
+		  }
+		});
+		
+		// Si la partie est en mode podium, envoyer aussi les gagnants
+		if (currentGameState.state === GameState.PODIUM) {
+		  socket.emit('gameEnded', {
+			winners: currentGameState.winners,
+			duration: currentGameState.endTime - Date.now()
+		  });
+		}
   });
   
   socket.on('structureDamaged', (data) => {
