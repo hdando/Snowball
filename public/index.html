@@ -284,7 +284,10 @@
 			forceNew: true,                // Forcer une nouvelle connexion
 			transports: ['websocket', 'polling']  // Essayer WebSocket d'abord, puis polling
 		});
-
+		
+		// Configurer les écouteurs d'événements immédiatement
+		setupSocketListeners();
+		
 		// Gestion des erreurs de connexion
 		socket.on('connect_error', (err) => {
 			console.error('Erreur de connexion au serveur:', err);
@@ -3639,8 +3642,6 @@
 		}
 
 		function startGame() {
-			// Établir la connexion et configurer les écouteurs
-			setupSocketListeners();
 			
 			// Marquer le jeu comme démarré
 			gameStarted = true;
