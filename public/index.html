@@ -229,12 +229,54 @@
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js';
 
 		import { io } from 'https://cdn.socket.io/4.4.1/socket.io.esm.min.js';
-		
+		function disposeThreeObject(obj) {
+			if (!obj) return;
+			
+			// Arrêter les animations éventuelles
+			if (obj.userData && obj.userData.animationId) {
+				cancelAnimationFrame(obj.userData.animationId);
+			}
+			
+			// Parcourir les enfants récursivement
+			while (obj.children && obj.children.length > 0) {
+				disposeThreeObject(obj.children[0]);
+				obj.remove(obj.children[0]);
+			}
+			
+			// Disposer de la géométrie
+			if (obj.geometry) {
+				obj.geometry.dispose();
+			}
+			
+			// Disposer des matériaux
+			if (obj.material) {
+				if (Array.isArray(obj.material)) {
+					obj.material.forEach(mat => {
+						if (mat.map) mat.map.dispose();
+						if (mat.emissiveMap) mat.emissiveMap.dispose();
+						if (mat.normalMap) mat.normalMap.dispose();
+						if (mat.specularMap) mat.specularMap.dispose();
+						mat.dispose();
+					});
+				} else {
+					if (obj.material.map) obj.material.map.dispose();
+					if (obj.material.emissiveMap) obj.material.emissiveMap.dispose();
+					if (obj.material.normalMap) obj.material.normalMap.dispose();
+					if (obj.material.specularMap) obj.material.specularMap.dispose();
+					obj.material.dispose();
+				}
+			}
+			
+			// Nettoyer les éventuelles textures
+			if (obj.texture) {
+				obj.texture.dispose();
+			}
+		}
 		// Nom d'utilisateur par défaut
 		let username = `Robot-${Math.floor(Math.random() * 1000)}`;
 		
 		// Établir la connexion WebSocket
-		const socket = io({
+		const socket = io('https://airobotwarfare.onrender.com',{
 			reconnectionAttempts: 5,       // Augmenter le nombre de tentatives de reconnexion
 			reconnectionDelay: 1000,       // Commencer avec un délai court (1 seconde)
 			reconnectionDelayMax: 5000,    // Maximum 5 secondes entre les tentatives
