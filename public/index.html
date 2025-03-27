@@ -234,7 +234,14 @@
 		let username = `Robot-${Math.floor(Math.random() * 1000)}`;
 		
 		// Établir la connexion WebSocket
-		const socket = io();
+		const socket = io({
+			reconnectionAttempts: 5,       // Augmenter le nombre de tentatives de reconnexion
+			reconnectionDelay: 1000,       // Commencer avec un délai court (1 seconde)
+			reconnectionDelayMax: 5000,    // Maximum 5 secondes entre les tentatives
+			timeout: 10000,                // Timeout de connexion de 10 secondes
+			forceNew: true,                // Forcer une nouvelle connexion
+			transports: ['websocket', 'polling']  // Essayer WebSocket d'abord, puis polling
+		});
 
 		// Gestion des erreurs de connexion
 		socket.on('connect_error', (err) => {
