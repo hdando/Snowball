@@ -357,8 +357,7 @@ io.on('connection', (socket) => {
                 hp: gameState.structures[data.structureId].hp
             });
         }
-    }
-  });  
+    }  
   
   // Mettre à jour la position du joueur
   socket.on('playerUpdate', (playerData) => {
