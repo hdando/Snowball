@@ -1183,10 +1183,11 @@
                         requestAnimationFrame(expandExplosion);
                     } else {
                         this.scene.remove(explosion);
+						this.animationId = null; //suivre l'ID d'animation
                     }
                 };
                 
-                expandExplosion();
+				this.animationId = requestAnimationFrame(expandExplosion);
                 
                 // Augmenter temporairement la luminosité du projectile
                 this.light.intensity = 3;
@@ -1195,10 +1196,18 @@
             
             // Détruire le projectile
             destroy() {
+				// Annuler toutes les animations en cours
+				if (this.animationId) {
+					cancelAnimationFrame(this.animationId);
+					this.animationId = null;
+				}{
                 this.scene.remove(this.group);
                 this.scene.remove(this.light);
                 this.collisionSystem.removeObject(this);
             }
+			
+			
+			
         }
 
 		// Classe pour le réservoir d'eau sur tour en béton
@@ -1351,6 +1360,7 @@
 				this.collisionSystem.removeObject(this);
 			}
 		}
+
 		// Classe pour l'arbre destructible avec variables de classe
 		class Tree {
 			constructor(scene, position, collisionSystem) {
@@ -1469,19 +1479,7 @@
 			takeDamage(amount) {
 				if (!this.isAlive) return;
 				
-				// Pour le joueur principal uniquement, informer le serveur
-				if (player.isMainPlayer) {
-					socket.emit('structureDamaged', {
-						structureId: this.id,
-						damage: amount,
-						position: {
-							x: this.mesh.position.x,
-							y: this.mesh.position.y,
-							z: this.mesh.position.z
-						}
-					});
-				}
-				
+			
 				// Afficher le texte des dégâts
 				createDamageText(this.mesh.position, amount);
 				
@@ -3326,13 +3324,6 @@
             }
         });
 
-		// Touches pour changer de mode
-		document.addEventListener('keydown', (event) => {
-			if (event.key === 'c' || event.key === 'C') {
-				this.toggleCameraMode();
-			}
-		});
-
         document.addEventListener('keyup', (event) => {
             if (event.key in keys) keys[event.key] = false;
         });
@@ -3911,9 +3902,13 @@
 			} else if (otherPlayers[projectileData.ownerId]) {
 				owner = otherPlayers[projectileData.ownerId];
 			} else {
-				// Si le propriétaire n'est pas trouvé, utiliser le joueur principal
-				// comme référence pour la puissance d'attaque et la portée
-				owner = player;
+				// Si le propriétaire n'est pas trouvé, créer un propriétaire temporaire
+				// avec seulement les propriétés nécessaires
+				owner = {
+					attack: projectileData.damage || 10,
+					range: projectileData.maxDistance || 10,
+					projectiles: []  // Tableau vide pour éviter les erreurs
+				};
 			}
 			
 			// Créer le projectile
@@ -3944,12 +3939,13 @@
 			projectile.id = projectileData.id;
 			console.log(`Projectile créé: ${projectileData.id} par joueur ${projectileData.ownerId}`);
 			
-			// Ajouter à la liste des projectiles du propriétaire
+			// Ajouter à la liste des projectiles du propriétaire seulement si le propriétaire existe encore
 			if (projectileData.ownerId === socket.id) {
 				player.projectiles.push(projectile);
 			} else if (otherPlayers[projectileData.ownerId]) {
 				otherPlayers[projectileData.ownerId].projectiles.push(projectile);
 			}
+			// Ne pas stocker le projectile si le propriétaire n'existe plus
 		}
 		
 		// Créer les éléments d'UI nécessaires au cycle de jeu
@@ -4183,17 +4179,39 @@
 		function updateGameState(newState) {
 			// Supprimer tous les éléments de jeu existants
 			
+			// Arrêter toutes les animations en cours
+			cancelAnimationFrame(animationId);  // Assurez-vous que l'ID d'animation principal est accessible
+
 			// Supprimer les processeurs
 			gameMap.processors.forEach(processor => {
+				if (processor.isBouncing) {
+					processor.isBouncing = false;  // Arrêter les animations de rebond
+				}
 				processor.destroy();
 			});
 			gameMap.processors = [];
 			
 			// Supprimer les canons
 			gameMap.cannons.forEach(cannon => {
+				if (cannon.isBouncing) {
+					cannon.isBouncing = false;  // Arrêter les animations de rebond
+				}
 				cannon.destroy();
 			});
 			gameMap.cannons = [];
+			
+			// Nettoyer explicitement les projectiles de tous les joueurs
+			Object.values(otherPlayers).forEach(otherPlayer => {
+				otherPlayer.projectiles.forEach(projectile => {
+					projectile.destroy();
+				});
+				otherPlayer.projectiles = [];
+			});
+			
+			player.projectiles.forEach(projectile => {
+				projectile.destroy();
+			});
+			player.projectiles = [];
 			
 			// Supprimer les structures
 			gameMap.structures.forEach(structure => {
@@ -4315,6 +4333,38 @@
             lastTime = currentTime;
         }
 		
+		function cleanupGame() {
+			// Arrêter toutes les animations
+			cancelAnimationFrame(animationId);
+			
+			// Nettoyer tous les objets avec des animations
+			gameMap.processors.forEach(p => p.destroy());
+			gameMap.cannons.forEach(c => c.destroy());
+			gameMap.structures.forEach(s => { if (s.destroy) s.destroy(); });
+			
+			// Nettoyer les projectiles
+			player.projectiles.forEach(p => p.destroy());
+			Object.values(otherPlayers).forEach(op => {
+				op.projectiles.forEach(p => p.destroy());
+			});
+			
+			// Nettoyer les tags de noms
+			removePlayerNameTag(player);
+			Object.values(otherPlayers).forEach(op => removePlayerNameTag(op));
+			
+			// Supprimer les écouteurs d'événements
+			document.removeEventListener('keydown', keydownHandler);
+			document.removeEventListener('keyup', keyupHandler);
+			window.removeEventListener('resize', resizeHandler);
+			
+			// Déconnecter du serveur
+			socket.disconnect();
+			
+			console.log("Jeu nettoyé avec succès.");
+		}
+
+		// Ajouter un écouteur d'événement pour nettoyer avant de quitter
+		window.addEventListener('beforeunload', cleanupGame);
 
 		function createDamageText(position, amount) {
 			// Convertir la position 3D en position 2D sur l'écran
