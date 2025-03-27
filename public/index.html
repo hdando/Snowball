@@ -3325,63 +3325,12 @@
                 event.preventDefault(); // Empêcher le défilement de la page avec les flèches
             }
             
-            // Contrôles de la caméra
-            switch(event.key) {
-                case 'c': // Changer le mode de caméra
-                case 'C':
-                    cameraController.toggleCameraMode();
-                    break;
-                    
-                case 'h': // Augmenter la hauteur
-                case 'H':
-                    cameraController.adjustParameter('height', 1);
-                    break;
-                    
-                case 'g': // Diminuer la hauteur
-                case 'G':
-                    cameraController.adjustParameter('height', -1);
-                    break;
-                    
-                case 'k': // Augmenter la distance ou rotation selon le mode
-                case 'K':
-                    cameraController.adjustParameter('distance', 1);
-                    cameraController.adjustParameter('forward', 0.1);
-                    cameraController.adjustParameter('rotation', 0.1);
-                    break;
-                    
-                case 'l': // Diminuer la distance ou rotation selon le mode
-                case 'L':
-                    cameraController.adjustParameter('distance', -1);
-                    cameraController.adjustParameter('forward', -0.1);
-                    cameraController.adjustParameter('rotation', -0.1);
-                    break;
-                    
-                case 'j': // Augmenter l'angle (mode libre uniquement)
-                case 'J':
-                    cameraController.adjustParameter('angle', 0.2);
-                    break;
-                    
-                case 'n': // Diminuer l'angle (mode libre uniquement)
-                case 'N':
-                    cameraController.adjustParameter('angle', -0.2);
-                    break;
-                    
-                case 'r': // Activer/désactiver la rotation automatique (mode libre)
-                case 'R':
-                    cameraController.adjustParameter('autoRotate');
-                    break;
-                    
-                case 'v': // Augmenter la vitesse de rotation (mode libre)
-                case 'V':
-                    cameraController.adjustParameter('autoRotateSpeed', 0.1);
-                    break;
-                    
-                case 'b': // Diminuer la vitesse de rotation (mode libre)
-                case 'B':
-                    cameraController.adjustParameter('autoRotateSpeed', -0.1);
-                    break;
-            }
-        });
+		// Contrôles de la caméra
+		document.addEventListener('keydown', (event) => {
+			if (event.key === 'c' || event.key === 'C') {
+				this.toggleCameraMode();
+			}
+		});
 
         document.addEventListener('keyup', (event) => {
             if (event.key in keys) keys[event.key] = false;
