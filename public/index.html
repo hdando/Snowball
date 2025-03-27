@@ -1024,7 +1024,7 @@
 				this.light.position.copy(this.group.position);
 				
 				// Faire tourner légèrement l'obus pour un effet réaliste
-				this.mesh.rotation.y += 0.1;
+				this.mesh.rotation.z += 0.1;
 							   
 				// Mettre à jour la distance parcourue
 				this.distance += this.speed;
@@ -1912,7 +1912,7 @@
 				// Boîte de collision correspondant exactement au corps du robot
 				const colliderGeometry = new THREE.BoxGeometry(
 					this.bodyWidth + this.frameThickness,
-					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2)+ 0.2, //0.2 est la hauteur du canon?
+					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2)+ 0.3, //0.2 est la hauteur du canon?
 					this.bodyDepth
 				);
 				
@@ -3729,7 +3729,9 @@
 					});
 				}
 			}
-			
+			if (otherPlayer.headGroup && otherPlayer.cannonGroup) {
+				otherPlayer.headGroup.position.y += 0.4; // Ajuster selon vos besoins
+			}
 			// Stocker la référence
 			otherPlayers[id] = otherPlayer;
 			
