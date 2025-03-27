@@ -305,8 +305,7 @@ io.on('connection', (socket) => {
     
     // Envoyer la liste complète des joueurs au nouveau joueur
     socket.emit('playerList', gameState.players);
-	
-
+  });
   
   socket.on('structureDamaged', (data) => {
     if (gameState.structures[data.structureId]) {
@@ -466,47 +465,48 @@ io.on('connection', (socket) => {
     }
   });
   
-	// Gérer la déconnexion
-	socket.on('disconnect', () => {
-		console.log(`Joueur déconnecté: ${socket.id}`);
-		
-		// Supprimer le joueur de l'état du jeu
-		if (gameState.players[socket.id]) {
-		  delete gameState.players[socket.id];
-		}
-		
-		// Informer tous les autres joueurs de la déconnexion
-		io.emit('playerLeft', socket.id);
-	  });
-	});
-		// Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
-		socket.on('requestGameState', () => {
-			console.log(`Joueur ${socket.id} demande un rafraîchissement de l'état du jeu`);
-			
-			// Envoyer l'état actuel du jeu et les informations de la partie au joueur
-			socket.emit('gameState', {
-			  players: gameState.players,
-			  processors: gameState.processors,
-			  cannons: gameState.cannons,
-			  projectiles: gameState.projectiles,
-			  structures: gameState.structures,
-			  gameInfo: {
-				state: currentGameState.state,
-				gameId: currentGameState.gameId,
-				startTime: currentGameState.startTime,
-				endTime: currentGameState.endTime
-			  }
-			});
-			
-			// Si la partie est en mode podium, envoyer aussi les gagnants
-			if (currentGameState.state === GameState.PODIUM) {
-			  socket.emit('gameEnded', {
-				winners: currentGameState.winners,
-				duration: currentGameState.endTime - Date.now()
-			  });
-			}
-	  });
-	  
+  // Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
+  socket.on('requestGameState', () => {
+    console.log(`Joueur ${socket.id} demande un rafraîchissement de l'état du jeu`);
+    
+    // Envoyer l'état actuel du jeu et les informations de la partie au joueur
+    socket.emit('gameState', {
+      players: gameState.players,
+      processors: gameState.processors,
+      cannons: gameState.cannons,
+      projectiles: gameState.projectiles,
+      structures: gameState.structures,
+      gameInfo: {
+        state: currentGameState.state,
+        gameId: currentGameState.gameId,
+        startTime: currentGameState.startTime,
+        endTime: currentGameState.endTime
+      }
+    });
+    
+    // Si la partie est en mode podium, envoyer aussi les gagnants
+    if (currentGameState.state === GameState.PODIUM) {
+      socket.emit('gameEnded', {
+        winners: currentGameState.winners,
+        duration: currentGameState.endTime - Date.now()
+      });
+    }
+  });
+  
+  // Gérer la déconnexion
+  socket.on('disconnect', () => {
+    console.log(`Joueur déconnecté: ${socket.id}`);
+    
+    // Supprimer le joueur de l'état du jeu
+    if (gameState.players[socket.id]) {
+      delete gameState.players[socket.id];
+    }
+    
+    // Informer tous les autres joueurs de la déconnexion
+    io.emit('playerLeft', socket.id);
+  });
+});
+
 // Fonction pour créer périodiquement des processeurs
 function spawnProcessors() {
   // Ne pas spawner de nouveaux processeurs pendant le podium ou le redémarrage
