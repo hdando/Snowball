@@ -1017,27 +1017,27 @@
             }
             
             
-            // Mettre à jour le projectile
-            update() {
-                // Déplacer le projectile
-                this.group.position.add(this.direction.clone().multiplyScalar(this.speed));
-                this.light.position.copy(this.group.position);
-                
-                // Faire tourner légèrement l'obus pour un effet réaliste
-                this.mesh.rotation.y += 0.1;
-                               
-                // Mettre à jour la distance parcourue
-                this.distance += this.speed;
-                
-                // Vérifier si le projectile a atteint sa portée maximale
-                if (this.distance >= this.maxDistance) {
-                    this.explode();
-                    return false;
-                }
-                
-                // Vérifier les collisions
-                const collisions = this.collisionSystem.checkCollisionForObject(this);
-                
+			// Mettre à jour le projectile
+			update() {
+				// Déplacer le projectile
+				this.group.position.add(this.direction.clone().multiplyScalar(this.speed));
+				this.light.position.copy(this.group.position);
+				
+				// Faire tourner légèrement l'obus pour un effet réaliste
+				this.mesh.rotation.y += 0.1;
+							   
+				// Mettre à jour la distance parcourue
+				this.distance += this.speed;
+				
+				// Vérifier si le projectile a atteint sa portée maximale
+				if (this.distance >= this.maxDistance) {
+					this.explode();
+					return false;
+				}
+				
+				// Vérifier les collisions
+				const collisions = this.collisionSystem.checkCollisionForObject(this);
+				
 				for (const obj of collisions) {
 					// Ignorer le propriétaire du projectile
 					if (obj === this.owner) continue;
@@ -1047,6 +1047,18 @@
 										 obj.userData.type === 'structure' || obj.userData.type === 'tree')) {
 						// Si l'objet est destructible (possède takeDamage), infliger des dégâts
 						if (obj.takeDamage) {
+							// IMPORTANT: Envoyer au serveur si c'est le joueur principal
+							if (player && player.isMainPlayer) {
+								socket.emit('structureDamaged', {
+									structureId: obj.id || '',
+									damage: this.damage,
+									position: {
+										x: obj.mesh.position.x,
+										y: obj.mesh.position.y,
+										z: obj.mesh.position.z
+									}
+								});
+							}
 							obj.takeDamage(this.damage);
 						}
 						this.explode();
@@ -1054,16 +1066,32 @@
 					}
 					
 					// Si c'est un autre joueur, infliger des dégâts et créer une explosion
-					else if (obj.takeDamage) {
+					else if (obj.takeDamage && obj !== this.owner) {
+						// IMPORTANT: Envoyer l'impact au serveur uniquement si c'est le joueur principal
+						if (player && player.isMainPlayer) {
+							socket.emit('projectileHit', {
+								projectileId: this.id || '',
+								targetId: obj.playerId || '',
+								targetType: obj instanceof Player ? 'player' : 'structure',
+								damage: this.damage,
+								position: {
+									x: this.group.position.x,
+									y: this.group.position.y,
+									z: this.group.position.z
+								}
+							});
+							console.log("Impact envoyé au serveur:", obj.playerId, this.damage);
+						}
+						
+						// Appliquer les dégâts localement
 						obj.takeDamage(this.damage);
 						this.explode();
 						return false;
 					}
 				}
-                
-                return true;
-            }
-            
+				
+				return true;
+			}
             // Créer une explosion et détruire le projectile
             explode() {
                 // Créer un effet d'explosion
@@ -1884,7 +1912,7 @@
 				// Boîte de collision correspondant exactement au corps du robot
 				const colliderGeometry = new THREE.BoxGeometry(
 					this.bodyWidth + this.frameThickness,
-					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2),
+					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2)+ 0.2, //0.2 est la hauteur du canon?
 					this.bodyDepth
 				);
 				
@@ -3396,6 +3424,11 @@
 				// Traiter les structures statiques
 				if (state.structures) {
 					console.log(`Structures reçues: ${Object.keys(state.structures).length}`);
+					// IMPORTANT : Vider les structures existantes avant d'en créer de nouvelles
+					gameMap.structures.forEach(structure => {
+					  if (structure.destroy) structure.destroy();
+					});
+					gameMap.structures = [];
 					
 					Object.values(state.structures).forEach(structureData => {
 						console.log(`Création de la structure ${structureData.id} de type ${structureData.type}`);
@@ -3936,6 +3969,9 @@
 			if (otherPlayers[projectileData.ownerId]) {
 				otherPlayers[projectileData.ownerId].showRecoilEffect();
 			}
+			// Stocker l'ID du projectile venant du serveur
+			projectile.id = projectileData.id;
+			console.log(`Projectile créé: ${projectileData.id} par joueur ${projectileData.ownerId}`);
 			
 			// Ajouter à la liste des projectiles du propriétaire
 			if (projectileData.ownerId === socket.id) {
