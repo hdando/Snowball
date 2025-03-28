@@ -1119,11 +1119,26 @@
 					
 					// Si c'est un autre joueur, infliger des dégâts et créer une explosion
 					else if (obj.takeDamage && obj !== this.owner) {
+						// Déterminer l'ID du joueur touché (différent selon si c'est un joueur ou un autre objet)
+						let targetId = '';
+						
+						// Vérifier si l'objet touché est un joueur
+						if (obj instanceof Player) {
+							targetId = obj.playerId;
+							console.log("Joueur touché:", obj.username, "ID:", targetId);
+							
+							// Appliquer directement l'effet visuel localement pour feedback immédiat
+							if (!player.isMainPlayer) { // Si c'est un autre joueur qui tire
+								obj.showDamageEffect();
+								createDamageText(obj.mesh.position, this.damage);
+							}
+						}
+						
 						// IMPORTANT: Envoyer l'impact au serveur uniquement si c'est le joueur principal
 						if (player && player.isMainPlayer) {
 							socket.emit('projectileHit', {
 								projectileId: this.id || '',
-								targetId: obj.playerId || '',
+								targetId: targetId,
 								targetType: obj instanceof Player ? 'player' : 'structure',
 								damage: this.damage,
 								position: {
@@ -1132,7 +1147,7 @@
 									z: this.group.position.z
 								}
 							});
-							console.log("Impact envoyé au serveur:", obj.playerId, this.damage);
+							console.log("Impact envoyé au serveur:", targetId, this.damage);
 						}
 						
 						this.explode();
@@ -2680,7 +2695,7 @@
 				});
 			}
 
-			// Effet visuel pour les dégâts, inspiré de la méthode utilisée pour les arbres
+			// Effet visuel pour les dégâts
 			showDamageEffect() {
 				// Change la couleur du corps du robot pendant un court moment
 				this.bodyParts.forEach(part => {
@@ -3556,6 +3571,8 @@
 			
 			// Un joueur est touché
 			socket.on('playerDamaged', (data) => {
+				console.log("Événement playerDamaged reçu:", data);
+				
 				if (data.id === socket.id) {
 					// C'est nous qui sommes touchés, mais nous gérons nos propres dégâts
 					// Uniquement synchroniser en cas de différence importante
@@ -3568,10 +3585,21 @@
 					player.showDamageEffect();
 					
 				} else if (otherPlayers[data.id]) {
+					console.log("Joueur touché trouvé:", otherPlayers[data.id].username);
 					// Un autre joueur est touché
 					otherPlayers[data.id].hp = data.hp;
 					createDamageText(otherPlayers[data.id].mesh.position, data.damage);
+					
+					// S'assurer que les couleurs originales sont stockées
+					if (!otherPlayers[data.id].originalBodyColors || 
+						otherPlayers[data.id].originalBodyColors.length === 0) {
+						otherPlayers[data.id].storeOriginalColors();
+					}
+					
+					// Appliquer l'effet visuel
 					otherPlayers[data.id].showDamageEffect();
+				} else {
+					console.log("Joueur touché non trouvé dans la liste:", data.id);
 				}
 			});
 			
