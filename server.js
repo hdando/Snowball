@@ -713,10 +713,10 @@ io.on('connection', (socket) => {
     }
     
     // Vérifier que le projectile existe
-    if (!gameState.projectiles[data.projectileId]) {
-      console.log(`Impact avec projectile inexistant: ${data.projectileId}`);
-      return;
-    }
+    //if (!gameState.projectiles[data.projectileId]) {
+    //  console.log(`Impact avec projectile inexistant: ${data.projectileId}`);
+    //  return;
+    //}
     
     // Vérifier que la cible existe
     if (data.targetType === 'player' && !gameState.players[data.targetId]) {
