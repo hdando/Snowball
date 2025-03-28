@@ -704,116 +704,164 @@ io.on('connection', (socket) => {
     });
   });
   
-  // Gérer l'impact des projectiles
-  socket.on('projectileHit', (data) => {
-    // Validation de base
-    if (!data.projectileId || !data.targetId || !isValidPosition(data.position)) {
-      console.log("Données d'impact incomplètes ou invalides", data);
-      return;
-    }
-    
-    // Vérifier que le projectile existe
-    //if (!gameState.projectiles[data.projectileId]) {
-    //  console.log(`Impact avec projectile inexistant: ${data.projectileId}`);
-    //  return;
-    //}
-    
-    // Vérifier que la cible existe
-    if (data.targetType === 'player' && !gameState.players[data.targetId]) {
-      console.log(`Impact avec joueur inexistant: ${data.targetId}`);
-      return;
-    }
-    
-    const projectile = gameState.projectiles[data.projectileId];
-    
-    // Vérifier que le tireur est bien le propriétaire du projectile
-    if (projectile.ownerId !== socket.id) {
-      console.log(`Tentative d'usurpation de projectile: ${socket.id} pour ${projectile.ownerId}`);
-      return;
-    }
-    
-    // Vérifier le temps de vie du projectile
-    const projectileAge = Date.now() - projectile.createdAt;
-    const maxLifetime = 5000; // 5 secondes max
-    
-    if (projectileAge > maxLifetime) {
-      console.log(`Projectile trop ancien: ${projectileAge}ms`);
-      delete gameState.projectiles[data.projectileId];
-      return;
-    }
-    
-    // Vérifier la distance d'impact
-    const distanceFromStart = calculateDistance(projectile.position, data.position);
-    if (distanceFromStart > projectile.range * 1.1) { // 10% de marge d'erreur
-      console.log(`Distance d'impact suspecte: ${distanceFromStart.toFixed(2)} > ${projectile.range}`);
-      return;
-    }
-    
-    // Vérification spécifique pour une cible joueur
-    if (data.targetType === 'player' && data.targetId) {
-      const targetPosition = gameState.players[data.targetId].position;
-      const targetDistance = calculateDistance(data.position, targetPosition);
-      
-      // 3 unités = rayon de collision raisonnable (ajustement selon échelle du joueur)
-      let collisionRadius = 3;
-      
-      // Ajuster le rayon de collision en fonction de la taille du joueur
-      if (gameState.players[data.targetId].stats && gameState.players[data.targetId].stats.processorCounts) {
-        const totalProcessors = Object.values(gameState.players[data.targetId].stats.processorCounts)
-          .reduce((sum, count) => sum + count, 0);
-        // Augmenter le rayon de 0.5% par processeur
-        collisionRadius *= (1 + (totalProcessors * 0.005));
-      }
-      
-      if (targetDistance > collisionRadius) {
-        console.log(`Cible trop éloignée de l'impact: ${targetDistance.toFixed(2)} > ${collisionRadius}`);
-        return;
-      }
-    }
-    
-    // Si toutes les vérifications passent, traiter l'impact
-    delete gameState.projectiles[data.projectileId];
-    
-    if (data.targetType === 'player' && gameState.players[data.targetId]) {
-      // Calculer les dégâts en tenant compte de la résistance
-      const rawDamage = projectile.damage || data.damage || 10;
-      const resistance = gameState.players[data.targetId].stats?.resistance || 10;
-      const reductionRatio = 1 - 1/(1 + resistance/100);
-      const damage = Math.max(1, Math.round(rawDamage * (1 - reductionRatio)));
-      
-      // Appliquer les dégâts
-      gameState.players[data.targetId].hp -= damage;
-      
-      // Vérifier si le joueur est mort
-      if (gameState.players[data.targetId].hp <= 0) {
-        gameState.players[data.targetId].hp = 0;
-        gameState.players[data.targetId].isAlive = false;
-        
-        // Diffuser l'événement de mort du joueur
-        io.emit('playerKilled', {
-          id: data.targetId,
-          killerId: socket.id
-        });
-        
-        // Créer les processeurs largués
-        spawnDroppedProcessors(data.targetId, data.position);
-      }
-      
-      // Diffuser l'information des dégâts à tous les joueurs
-      io.emit('playerDamaged', {
-        id: data.targetId,
-        damage: damage,
-        hp: gameState.players[data.targetId].hp
-      });
-    }
-    
-    // Diffuser l'information de l'impact à tous les joueurs
-    io.emit('projectileDestroyed', {
-      id: data.projectileId,
-      position: data.position
-    });
-  });
-  
+	// Gérer l'impact des projectiles
+	socket.on('projectileHit', (data) => {
+	  // Validation de base
+	  if (!data.targetId || !isValidPosition(data.position)) {
+		console.log("Données d'impact incomplètes ou invalides", data);
+		return;
+	  }
+	  
+	  // Deux modes de validation : par ID direct ou par propriétaire/position
+	  let projectile = null;
+	  
+	  // Mode 1: Validation par ID (ancien système)
+	  if (data.projectileId && gameState.projectiles[data.projectileId]) {
+		projectile = gameState.projectiles[data.projectileId];
+	  } 
+	  // Mode 2: Validation par propriétaire et position (nouveau système)
+	  else if (data.ownerId && data.position) {
+		// Rechercher le projectile le plus probable (appartenant à ce joueur et proche de la position d'impact)
+		const potentialProjectiles = Object.values(gameState.projectiles).filter(p => 
+		  p.ownerId === socket.id && 
+		  calculateDistance(p.position, data.position) < p.range * 0.5  // 50% de la portée pour la marge
+		);
+		
+		// Si des projectiles potentiels sont trouvés, prendre le plus proche
+		if (potentialProjectiles.length > 0) {
+		  projectile = potentialProjectiles.sort((a, b) => 
+			calculateDistance(a.position, data.position) - calculateDistance(b.position, data.position)
+		  )[0];
+		}
+	  }
+	  
+	  // Si aucun projectile n'est trouvé, utiliser un mode de validation simplifié
+	  if (!projectile) {
+		console.log(`Projectile non trouvé, utilisation du mode de validation simplifié pour ${socket.id}`);
+		
+		// Vérifier que le joueur tire et que la cible existe
+		if (!gameState.players[socket.id]) {
+		  console.log(`Tireur inexistant: ${socket.id}`);
+		  return;
+		}
+		
+		if (data.targetType === 'player' && !gameState.players[data.targetId]) {
+		  console.log(`Impact avec joueur inexistant: ${data.targetId}`);
+		  return;
+		}
+		
+		// Vérifier que le joueur ne triche pas en attaquant des cibles trop loin
+		if (data.targetType === 'player') {
+		  const attackerPos = gameState.players[socket.id].position;
+		  const targetPos = gameState.players[data.targetId].position;
+		  const distance = calculateDistance(attackerPos, targetPos);
+		  const maxRange = gameState.players[socket.id].stats?.range || 10;
+		  
+		  if (distance > maxRange * 1.2) { // 20% de marge
+			console.log(`Attaque à distance suspecte: ${distance.toFixed(2)} > ${maxRange}`);
+			return;
+		  }
+		  
+		  // Créer un "faux" projectile pour le traitement
+		  projectile = {
+			ownerId: socket.id,
+			damage: gameState.players[socket.id].stats?.attack || 10
+		  };
+		} else {
+		  return; // Abandonner si pas de joueur ciblé dans le mode simplifié
+		}
+	  } else {
+		// Pour les projectiles identifiés normalement, vérifier que le tireur est bien le propriétaire
+		if (projectile.ownerId !== socket.id) {
+		  console.log(`Tentative d'usurpation de projectile: ${socket.id} pour ${projectile.ownerId}`);
+		  return;
+		}
+		
+		// Vérifier le temps de vie du projectile
+		const projectileAge = Date.now() - projectile.createdAt;
+		const maxLifetime = 5000; // 5 secondes max
+		
+		if (projectileAge > maxLifetime) {
+		  console.log(`Projectile trop ancien: ${projectileAge}ms`);
+		  if (projectile.id) delete gameState.projectiles[projectile.id];
+		  return;
+		}
+		
+		// Vérifier la distance d'impact
+		if (projectile.position) {
+		  const distanceFromStart = calculateDistance(projectile.position, data.position);
+		  if (distanceFromStart > projectile.range * 1.1) { // 10% de marge d'erreur
+			console.log(`Distance d'impact suspecte: ${distanceFromStart.toFixed(2)} > ${projectile.range}`);
+			return;
+		  }
+		}
+	  }
+	  
+	  // Vérification spécifique pour une cible joueur
+	  if (data.targetType === 'player' && data.targetId) {
+		const targetPosition = gameState.players[data.targetId].position;
+		const targetDistance = calculateDistance(data.position, targetPosition);
+		
+		// 3 unités = rayon de collision raisonnable (ajustement selon échelle du joueur)
+		let collisionRadius = 3;
+		
+		// Ajuster le rayon de collision en fonction de la taille du joueur
+		if (gameState.players[data.targetId].stats && gameState.players[data.targetId].stats.processorCounts) {
+		  const totalProcessors = Object.values(gameState.players[data.targetId].stats.processorCounts)
+			.reduce((sum, count) => sum + count, 0);
+		  // Augmenter le rayon de 0.5% par processeur
+		  collisionRadius *= (1 + (totalProcessors * 0.005));
+		}
+		
+		if (targetDistance > collisionRadius) {
+		  console.log(`Cible trop éloignée de l'impact: ${targetDistance.toFixed(2)} > ${collisionRadius}`);
+		  return;
+		}
+	  }
+	  
+	  // Si toutes les vérifications passent, traiter l'impact
+	  if (projectile.id) delete gameState.projectiles[projectile.id];
+	  
+	  if (data.targetType === 'player' && gameState.players[data.targetId]) {
+		// Calculer les dégâts en tenant compte de la résistance
+		const rawDamage = projectile.damage || data.damage || 10;
+		const resistance = gameState.players[data.targetId].stats?.resistance || 10;
+		const reductionRatio = 1 - 1/(1 + resistance/100);
+		const damage = Math.max(1, Math.round(rawDamage * (1 - reductionRatio)));
+		
+		// Appliquer les dégâts
+		gameState.players[data.targetId].hp -= damage;
+		
+		// Vérifier si le joueur est mort
+		if (gameState.players[data.targetId].hp <= 0) {
+		  gameState.players[data.targetId].hp = 0;
+		  gameState.players[data.targetId].isAlive = false;
+		  
+		  // Diffuser l'événement de mort du joueur
+		  io.emit('playerKilled', {
+			id: data.targetId,
+			killerId: socket.id
+		  });
+		  
+		  // Créer les processeurs largués
+		  spawnDroppedProcessors(data.targetId, data.position);
+		}
+		
+		// Diffuser l'information des dégâts à tous les joueurs
+		io.emit('playerDamaged', {
+		  id: data.targetId,
+		  damage: damage,
+		  hp: gameState.players[data.targetId].hp
+		});
+	  }
+	  
+	  // Diffuser l'information de l'impact à tous les joueurs
+	  io.emit('projectileDestroyed', {
+		id: data.projectileId || `temp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+		position: data.position
+	  });
+	});
+ 
   // Gérer la collecte de processeurs
   socket.on('processorCollected', (data) => {
     // Validation de base
