@@ -679,7 +679,10 @@ io.on('connection', (socket) => {
     const damage = playerStats ? playerStats.attack : 10;
     const range = playerStats ? playerStats.range : 10;
     
-    const id = `projectile-${projectileId++}`;
+    // Utiliser l'ID fourni par le client s'il existe, sinon en générer un
+	const id = projectileData.projectileId || `projectile-${projectileId++}`;
+	
+	// Stocker la référence au projectile dans gameState
     gameState.projectiles[id] = {
       id,
       ownerId: socket.id,
