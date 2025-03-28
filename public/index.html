@@ -3742,6 +3742,9 @@
 				username: player.username
 			});
 			
+			// Demander l'état complet du jeu après avoir rejoint
+			socket.emit('requestGameState');
+			
 			// Ajouter un tag de nom au joueur principal
 			addPlayerNameTag(player);
 			
