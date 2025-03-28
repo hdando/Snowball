@@ -1128,20 +1128,27 @@
 							console.log("Joueur touché:", obj.username, "ID:", targetId);
 							
 							// Appliquer directement l'effet visuel localement pour feedback immédiat
-							if (!player.isMainPlayer) { // Si c'est un autre joueur qui tire
-								obj.showDamageEffect();
-								createDamageText(obj.mesh.position, this.damage);
-							}
+							obj.showDamageEffect();
+							createDamageText(obj.mesh.position, this.damage);
+
 						}
 						
 						// IMPORTANT: Envoyer l'impact au serveur uniquement si c'est le joueur principal
 						if (player && player.isMainPlayer) {
+							// CORRECTION: Éviter d'utiliser l'ID temporaire qui cause la désynchronisation
 							socket.emit('projectileHit', {
-								projectileId: this.id || '',
+								// Informations sur le projectile pour identification côté serveur
+								ownerId: player.playerId,  // Ajouter l'ID du tireur
+								originPosition: {          // Position de départ du projectile
+									x: this.owner.mesh.position.x,
+									y: this.owner.mesh.position.y,
+									z: this.owner.mesh.position.z
+								},
+								// Informations sur l'impact
 								targetId: targetId,
-								targetType: obj instanceof Player ? 'player' : 'structure',
+								targetType: 'player',
 								damage: this.damage,
-								position: {
+								position: {                // Position actuelle lors de l'impact
 									x: this.group.position.x,
 									y: this.group.position.y,
 									z: this.group.position.z
@@ -1149,14 +1156,30 @@
 							});
 							console.log("Impact envoyé au serveur:", targetId, this.damage);
 						}
-						
-						this.explode();
-						return false;
+					} else {
+						// Pour les autres objets qui ont takeDamage mais ne sont pas des joueurs
+						if (player && player.isMainPlayer) {
+							socket.emit('projectileHit', {
+								ownerId: player.playerId,
+								targetId: obj.id || '',
+								targetType: 'structure',
+								damage: this.damage,
+								position: {
+									x: this.group.position.x,
+									y: this.group.position.y,
+									z: this.group.position.z
+								}
+							});
+						}
 					}
+					
+					this.explode();
+					return false;
 				}
-				
-				return true;
 			}
+			
+			return true;
+		}
             // Créer une explosion et détruire le projectile
             explode() {
                 // Créer un effet d'explosion
