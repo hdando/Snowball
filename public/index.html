@@ -2414,6 +2414,7 @@
 							// Si c'est le joueur principal, informer le serveur
 							if (this.isMainPlayer) {
 								socket.emit('playerShoot', {
+								    projectileId: projectile.id, // Ajouter l'ID temporaire
 									position: projectile.group.position,
 									direction: projectile.direction,
 									damage: this.attack,
@@ -2490,20 +2491,26 @@
             }
             
             // Méthode auxiliaire pour tirer depuis un canon spécifique
-            fireFromBarrel(barrel, direction) {
-                // Position mondiale du bout du canon
-                const barrelTip = new THREE.Vector3(0, 0, -0.7);
-                const worldPosition = new THREE.Vector3();
-                
-                // Convertir la position locale en position mondiale
-                this.cannonGroup.updateMatrixWorld();
-                worldPosition.copy(barrelTip).applyMatrix4(this.cannonGroup.matrixWorld);
-                
-                // Créer le projectile
-                const projectile = new Projectile(this.scene, worldPosition, direction, this, this.collisionSystem);
-                this.projectiles.push(projectile);
-            }
-                       
+			fireFromBarrel(barrel, direction) {
+				// Position mondiale du bout du canon
+				const barrelTip = new THREE.Vector3(0, 0, -0.7);
+				const worldPosition = new THREE.Vector3();
+				
+				// Convertir la position locale en position mondiale
+				this.cannonGroup.updateMatrixWorld();
+				worldPosition.copy(barrelTip).applyMatrix4(this.cannonGroup.matrixWorld);
+				
+				// Créer un ID temporaire pour le projectile
+				const tempId = `temp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+				
+				// Créer le projectile
+				const projectile = new Projectile(this.scene, worldPosition, direction, this, this.collisionSystem);
+				projectile.id = tempId; // Assigner l'ID temporaire
+				this.projectiles.push(projectile);
+				
+				return projectile;
+			}    
+			
             // Effet de recul pour les canons latéraux
 			showSideCannonRecoilEffect(cannon) {
 				// Si l'état initial n'est pas enregistré, le faire maintenant
@@ -3508,6 +3515,42 @@
 			socket.on('projectileCreated', (projectileData) => {
 				if (projectileData.ownerId !== socket.id) {
 					createServerProjectile(projectileData);
+				}
+			});
+			
+			// Un projectile est créé par le serveur
+			socket.on('projectileCreated', (projectileData) => {
+				if (projectileData.ownerId !== socket.id) {
+					// C'est un projectile d'un autre joueur
+					createServerProjectile(projectileData);
+				} else {
+					// C'est notre propre projectile, mettre à jour l'ID
+					// Chercher le projectile temporaire correspondant à la position
+					const position = new THREE.Vector3(
+						projectileData.position.x,
+						projectileData.position.y,
+						projectileData.position.z
+					);
+					
+					// Trouver le projectile local qui correspond le mieux
+					let closestProjectile = null;
+					let minDistance = Infinity;
+					
+					for (const p of player.projectiles) {
+						if (p.id && p.id.startsWith('temp-')) {
+							const dist = p.group.position.distanceTo(position);
+							if (dist < minDistance) {
+								minDistance = dist;
+								closestProjectile = p;
+							}
+						}
+					}
+					
+					// Mettre à jour l'ID si on a trouvé un projectile correspondant
+					if (closestProjectile && minDistance < 1.0) {
+						console.log(`Mise à jour du projectile: ${closestProjectile.id} -> ${projectileData.id}`);
+						closestProjectile.id = projectileData.id;
+					}
 				}
 			});
 			
