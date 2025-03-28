@@ -1479,7 +1479,7 @@
 				
 			
 				// Afficher le texte des dégâts
-				createDamageText(this.mesh.position, amount);
+				//createDamageText(this.mesh.position, amount); Mis en commentaire pour éviter de voir le message deux fois
 				
 				// Effet visuel de dégâts
 				this.showDamageEffect();
@@ -1865,6 +1865,9 @@
 				// Créer le collider APRÈS avoir créé toutes les parties du robot
 				this.createCollider();
 				
+				// Stocker les couleurs originales pour l'effet de dégâts
+				this.storeOriginalColors();
+
 				// Propriétés de collision
 				this.hasCollision = true;   // Activer les collisions
 				
@@ -2324,6 +2327,13 @@
 			// Mettre à jour l'échelle du robot
 			updateScale() {
 				this.mesh.scale.set(this.baseScale, this.baseScale, this.baseScale);
+				    // Signaler au système de collision que notre collider a changé
+				if (this.collisionSystem) {
+					// Retirer temporairement l'objet du système de collision
+					this.collisionSystem.removeObject(this);
+					// Le rajouter pour que le système recalcule les dimensions
+					this.collisionSystem.addObject(this);
+				}
 			}
 			
 			// Animation des chenilles lors du mouvement avant/arrière
@@ -2495,8 +2505,7 @@
                 const projectile = new Projectile(this.scene, worldPosition, direction, this, this.collisionSystem);
                 this.projectiles.push(projectile);
             }
-            
-           
+                       
             // Effet de recul pour les canons latéraux
 			showSideCannonRecoilEffect(cannon) {
 				// Si l'état initial n'est pas enregistré, le faire maintenant
@@ -2615,8 +2624,7 @@
                 this.sideCannonsGroup.clear();
                 
 			}
-			
-		
+				
 			// Effet visuel lors de la destruction du robot
 			showDestructionEffect() {
 				// Masquer visuellement le robot (vous pourriez ajouter une animation plus complexe)
@@ -2653,19 +2661,35 @@
 				expandExplosion();
 			}
 			
-			// Effet visuel pour les dégâts
+			//Conserver les couleurs originales
+			storeOriginalColors() {
+				// Créer un tableau pour stocker les couleurs originales de chaque partie
+				this.originalBodyColors = [];
+				this.bodyParts.forEach(part => {
+					if (part && part.material && part.material.color) {
+						this.originalBodyColors.push(part.material.color.clone());
+					} else {
+						// Couleur par défaut au cas où
+						this.originalBodyColors.push(new THREE.Color(0x3a7d44));
+					}
+				});
+			}
+
+			// Effet visuel pour les dégâts, inspiré de la méthode utilisée pour les arbres
 			showDamageEffect() {
 				// Change la couleur du corps du robot pendant un court moment
-				const originalColors = [];
 				this.bodyParts.forEach(part => {
-					originalColors.push(part.material.color.clone());
-					part.material.color.set(0xff0000);  // Rouge quand touché
+					if (part && part.material) {
+						part.material.color.set(0xff0000);  // Rouge quand touché
+					}
 				});
 				
 				// Revenir aux couleurs d'origine après un délai
 				setTimeout(() => {
 					this.bodyParts.forEach((part, index) => {
-						part.material.color.copy(originalColors[index]);
+						if (part && part.material && index < this.originalBodyColors.length) {
+							part.material.color.copy(this.originalBodyColors[index]);
+						}
 					});
 				}, 200);
 			}
@@ -3498,6 +3522,10 @@
 						player.hp = data.hp;
 						player.updateUI();
 					}
+					// Voir l'effet visuel quand on est touché
+					createDamageText(player.mesh.position, data.damage);
+					player.showDamageEffect();
+					
 				} else if (otherPlayers[data.id]) {
 					// Un autre joueur est touché
 					otherPlayers[data.id].hp = data.hp;
@@ -3746,6 +3774,13 @@
 					Object.values(otherPlayer.processorCounts).forEach(count => {
 						otherPlayer.totalProcessors += count;
 					});
+				}
+				// Mettre à jour l'échelle du joueur en fonction du nombre total de processeurs
+				if (otherPlayer.totalProcessors > 0) {
+					// Calculer l'échelle (même logique que dans la méthode collectProcessor)
+					otherPlayer.baseScale = 1.0 + (otherPlayer.totalProcessors * 0.005);
+					// Appliquer l'échelle
+					otherPlayer.mesh.scale.set(otherPlayer.baseScale, otherPlayer.baseScale, otherPlayer.baseScale);
 				}
 			}
 		}
