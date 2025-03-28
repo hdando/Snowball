@@ -1135,8 +1135,6 @@
 							console.log("Impact envoyé au serveur:", obj.playerId, this.damage);
 						}
 						
-						// Appliquer les dégâts localement
-						obj.takeDamage(this.damage);
 						this.explode();
 						return false;
 					}
