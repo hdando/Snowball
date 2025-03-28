@@ -3541,14 +3541,7 @@
 					updateOtherPlayerPosition(playerData.id, playerData);
 				}
 			});
-			
-			// Un joueur tire
-			socket.on('projectileCreated', (projectileData) => {
-				if (projectileData.ownerId !== socket.id) {
-					createServerProjectile(projectileData);
-				}
-			});
-			
+				
 			// Un projectile est créé par le serveur
 			socket.on('projectileCreated', (projectileData) => {
 				if (projectileData.ownerId !== socket.id) {
