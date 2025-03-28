@@ -2697,6 +2697,20 @@
 
 			// Effet visuel pour les dégâts
 			showDamageEffect() {
+				console.log(`Effet de dégâts pour ${this.username}, ID: ${this.playerId}`);
+				
+				// Vérifier que nous avons des parties de corps à colorier
+				if (!this.bodyParts || this.bodyParts.length === 0) {
+					console.warn("Aucune partie de corps définie pour l'effet de dégâts");
+					return;
+				}
+				
+				// Stocker les couleurs originales si ce n'est pas déjà fait
+				if (!this.originalBodyColors || this.originalBodyColors.length === 0) {
+					console.log("Stockage des couleurs originales");
+					this.storeOriginalColors();
+				}
+				
 				// Change la couleur du corps du robot pendant un court moment
 				this.bodyParts.forEach(part => {
 					if (part && part.material) {
@@ -2706,6 +2720,8 @@
 				
 				// Revenir aux couleurs d'origine après un délai
 				setTimeout(() => {
+					if (!this.originalBodyColors) return; // Protection supplémentaire
+					
 					this.bodyParts.forEach((part, index) => {
 						if (part && part.material && index < this.originalBodyColors.length) {
 							part.material.color.copy(this.originalBodyColors[index]);
