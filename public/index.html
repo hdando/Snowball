@@ -2360,6 +2360,9 @@
 				// Réinitialiser toutes les positions de référence
 				this.storeAllInitialPositions();
 				
+				// Réinitialiser les positions des colonnes de processeur
+				this.resetProcessorColumnPositions();
+				
 				// Signaler au système de collision que notre collider a changé
 				if (this.collisionSystem) {
 					this.collisionSystem.removeObject(this);
@@ -2930,7 +2933,7 @@
 					
 					// Commencer avec une petite hauteur
 					column.scale.y = 0.1;
-					
+					column.originalY = this.columnCenterY - (this.columnHeight / 2);
 					// Ajout direct au corps
 					this.bodyGroup.add(column);
 					
@@ -2942,6 +2945,24 @@
 					
 					index++;
 				}
+			}
+			
+			// Méthode pour réinitialiser les positions des colonnes après un changement d'échelle
+			resetProcessorColumnPositions() {
+				if (!this.processorColumns) return;
+				
+				const propertyNames = ['hp', 'resistance', 'attack', 'attackSpeed', 'range', 'speed', 'repairSpeed'];
+				
+				propertyNames.forEach(prop => {
+					const column = this.processorColumns[prop];
+					if (column) {
+						// Si la position originale a été stockée, l'utiliser
+						if (column.originalY !== undefined) {
+							// Calculer la nouvelle position Y
+							column.position.y = column.originalY + (column.scale.y * this.columnHeight / 2);
+						}
+					}
+				});
 			}
 			
 			// Créer un effet de texte flottant
@@ -3323,11 +3344,20 @@
 						const count = this.processorCounts[prop];
 						const fillLevel = Math.min(1, count / 100); // Plein à 100 processeurs
 						
+						// Stocker l'échelle y actuelle avant de la modifier
+						const originalScaleY = column.scale.y;
+						
 						// Mettre à jour la hauteur de la colonne
 						column.scale.y = 0.1 + fillLevel * 0.9; // Minimum 0.1, maximum 1
 						
-						// Ajuster la position Y pour que la colonne grandisse vers le haut à partir du centre
-						column.position.y = this.columnCenterY - (this.columnHeight / 2) + (column.scale.y * this.columnHeight / 2);
+						// Rétablir la position y du pivot si nécessaire
+						if (column.originalY === undefined) {
+							column.originalY = this.columnCenterY - (this.columnHeight / 2);
+						}
+						
+						// Ajuster la position Y pour que la colonne grandisse vers le haut à partir du bas
+						// Utiliser la position originale stockée comme référence
+						column.position.y = column.originalY + (column.scale.y * this.columnHeight / 2);
 					}
 				});
 			}
@@ -3433,6 +3463,7 @@
 			gameMap.trees.push(tree);
 			gameMap.structures.push(tree);
 		}
+		
 		// Configuration de la scène
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);  // Ciel bleu
