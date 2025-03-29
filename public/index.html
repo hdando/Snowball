@@ -2303,15 +2303,16 @@
 				
 				// Déterminer le côté (gauche ou droit) et la rangée
 				const isLeftSide = cannonIndex % 2 === 0; // Pair = gauche, Impair = droite
-				const rowIndex = Math.floor(cannonIndex / 2); // Détermine la rangée, indépendamment du côté
+				const rowIndex = Math.floor(cannonIndex / 2); // Détermine la rangée
 				
+				// Positions de base (avant application de l'échelle)
 				const xOffset = isLeftSide ? -0.25 : 0.25; // Position latérale
 				const yOffset = 0.9 - (rowIndex * 0.45); // Hauteur variable
 				const zOffset = -0.2; // Espacement avant-arrière
 
 				cannonGroup.position.set(
 					xOffset,
-					yOffset, // Hauteur dynamique
+					yOffset, 
 					zOffset
 				);
 				
@@ -2350,7 +2351,8 @@
 				this.sideCannons.push({
 					group: cannonGroup,
 					barrel: barrel,
-					basePosition: barrel.position.z // Pour l'animation de recul
+					basePosition: barrel.position.z, // Pour l'animation de recul
+					initialPosition: barrel.position.clone() // Stockage de la position initiale
 				});
 				
 				// Ajouter aux parties du corps pour les effets de dégâts
@@ -2364,13 +2366,16 @@
             
 			// Mettre à jour l'échelle du robot
 			updateScale() {
+			    // Réinitialiser tous les reculs en cours avant de changer l'échelle
+			    this.resetAllRecoils();
+				
 				// Appliquer la nouvelle échelle
 				this.mesh.scale.set(this.baseScale, this.baseScale, this.baseScale);
 				
-				// Réinitialiser les positions initiales stockées pour les animations
-				this.storeInitialCannonPositions();
+				// Réinitialiser toutes les positions de référence
+				this.storeAllInitialPositions();
 				
-				// Mettre à jour le système de collision
+				// Signaler au système de collision que notre collider a changé
 				if (this.collisionSystem) {
 					this.collisionSystem.removeObject(this);
 					this.collisionSystem.addObject(this);
@@ -2379,6 +2384,11 @@
 			
 			// Animation des chenilles lors du mouvement avant/arrière
 			animateWheelsMovement(direction) {
+				// Si les positions initiales ne sont pas stockées, les enregistrer maintenant
+				if (!this.leftTrackInitialPositions || !this.rightTrackInitialPositions) {
+					this.storeAllInitialPositions();
+				}
+
 				// Animer uniquement les segments de chenilles
 				if (this.leftTrackSegments && this.rightTrackSegments) {
 					// Décaler les segments vers l'avant ou l'arrière
@@ -2403,13 +2413,14 @@
 			
 			// Animation des chenilles lors de la rotation
 			animateWheelsTurn(direction) {
+				// Si les positions initiales ne sont pas stockées, les enregistrer maintenant
+				if (!this.leftTrackInitialPositions || !this.rightTrackInitialPositions) {
+					this.storeAllInitialPositions();
+				}
+
 				// Simuler un différentiel de rotation des chenilles lors d'un virage
-				// direction: 1 pour droite, -1 pour gauche
-				
-				// Animer uniquement les segments de chenilles avec différentiel
 				if (this.leftTrackSegments && this.rightTrackSegments) {
 					// Le côté extérieur se déplace plus vite que le côté intérieur
-					// Augmentons la différence de vitesse pour un effet plus visible
 					const leftShift = direction > 0 ? -0.001 : -0.004;
 					const rightShift = direction > 0 ? -0.004 : -0.001;
 					
@@ -2551,40 +2562,82 @@
 			
             // Effet de recul pour les canons latéraux
 			showSideCannonRecoilEffect(cannon) {
-				// Si l'état initial n'est pas enregistré, le faire maintenant
-				if (!cannon.initialPosition) {
+				// Annuler tout timeout précédent pour ce canon
+				if (cannon.recoilTimeout) {
+					clearTimeout(cannon.recoilTimeout);
+				}
+				
+				// Vérifier et mettre à jour la position de référence si nécessaire
+				if (!cannon.initialPosition && cannon.barrel) {
 					cannon.initialPosition = cannon.barrel.position.clone();
 				}
 				
-				// Reculer le canon
+				// Toujours revenir à la position initiale avant d'appliquer un nouveau recul
+				cannon.barrel.position.copy(cannon.initialPosition);
+				
+				// Puis appliquer le recul
 				cannon.barrel.position.z += 0.08;
 				
-				// Revenir à la position initiale stockée
-				setTimeout(() => {
-					if (cannon.initialPosition) {
-						cannon.barrel.position.copy(cannon.initialPosition);
-					}
+				// Enregistrer le timeout pour pouvoir l'annuler si nécessaire
+				cannon.recoilTimeout = setTimeout(() => {
+					cannon.barrel.position.copy(cannon.initialPosition);
+					cannon.recoilTimeout = null;
 				}, 100);
 			}
 			
 			// Effet de recul lors du tir
 			showRecoilEffect() {
-				// Vérifier que l'état initial existe
-				if (!this.cannonBarrelInitialState) {
-					this.storeInitialCannonPositions();
+				// Annuler tout timeout précédent pour éviter les chevauchements
+				if (this.recoilTimeout) {
+					clearTimeout(this.recoilTimeout);
 				}
 				
-				// Reculer le canon
+				// Vérifier et mettre à jour la position de référence si nécessaire
+				if (!this.cannonBarrelInitialState) {
+					this.cannonBarrelInitialState = {
+						position: this.cannonBarrel.position.clone()
+					};
+				}
+				
+				// Toujours revenir à la position initiale avant d'appliquer un nouveau recul
+				this.cannonBarrel.position.copy(this.cannonBarrelInitialState.position);
+				
+				// Puis appliquer le recul
 				this.cannonBarrel.position.z += 0.1;
 				
-				// Revenir à la position initiale stockée
-				setTimeout(() => {
-					if (this.cannonBarrelInitialState) {
-						this.cannonBarrel.position.copy(this.cannonBarrelInitialState.position);
-					}
+				// Enregistrer le timeout pour pouvoir l'annuler si nécessaire
+				this.recoilTimeout = setTimeout(() => {
+					this.cannonBarrel.position.copy(this.cannonBarrelInitialState.position);
+					this.recoilTimeout = null;
 				}, 100);
-			}
+			}	
 			
+			resetAllRecoils() {
+				// Annuler tout timeout de recul et réinitialiser le canon principal
+				if (this.recoilTimeout) {
+					clearTimeout(this.recoilTimeout);
+					this.recoilTimeout = null;
+				}
+				
+				if (this.cannonBarrel && this.cannonBarrelInitialState) {
+					this.cannonBarrel.position.copy(this.cannonBarrelInitialState.position);
+				}
+				
+				// Réinitialiser tous les canons latéraux
+				if (this.sideCannons) {
+					this.sideCannons.forEach(cannon => {
+						if (cannon.recoilTimeout) {
+							clearTimeout(cannon.recoilTimeout);
+							cannon.recoilTimeout = null;
+						}
+						
+						if (cannon.barrel && cannon.initialPosition) {
+							cannon.barrel.position.copy(cannon.initialPosition);
+						}
+					});
+				}
+			}
+
 			// Mettre à jour les projectiles
 			updateProjectiles() {
 				for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -3034,6 +3087,8 @@
 				
 				// Ajouter les galets de guidage aux extrémités des chenilles
 				this.addTrackGuides();
+				
+				this.storeAllInitialPositions();
 			}
 			
 			// Ajouter les galets de guidage aux extrémités des chenilles
@@ -3069,40 +3124,66 @@
 				createGuides(0.2);
 			}
 			
+			resetTrackSegmentsToInitialPositions() {
+				// Réinitialiser les segments gauches
+				if (this.leftTrackSegments && this.leftTrackInitialPositions) {
+					this.leftTrackSegments.forEach((segment, index) => {
+						if (index < this.leftTrackInitialPositions.length) {
+							segment.position.copy(this.leftTrackInitialPositions[index]);
+						}
+					});
+				}
+				
+				// Réinitialiser les segments droits
+				if (this.rightTrackSegments && this.rightTrackInitialPositions) {
+					this.rightTrackSegments.forEach((segment, index) => {
+						if (index < this.rightTrackInitialPositions.length) {
+							segment.position.copy(this.rightTrackInitialPositions[index]);
+						}
+					});
+				}
+			}
+	
 			// Créer le canon
 			createCannon() {
 				// Créer la tête du robot avec la caméra et le canon
 				this.createRobotHead();
 				// Stocker la position initiale du canon principal
-				this.storeMainCannonPosition();
-			}
-			
-			// Stocker la position initiale du canon principal
-			storeMainCannonPosition() {
-				// Stocker la position initiale du canon principal
-				if (this.cannonBarrel) {
-					this.cannonBarrelInitialState = {
-						position: this.cannonBarrel.position.clone()
-					};
-				}
+				this.storeAllInitialPositions();
 			}
 			
 			//Stocker les positions initiales
-			storeInitialCannonPositions() {
-				// Stocker la position initiale du canon principal
+			storeAllInitialPositions() {
+				// STOCKAGE DES POSITIONS DES CANONS
+				// Canon principal
 				if (this.cannonBarrel) {
 					this.cannonBarrelInitialState = {
 						position: this.cannonBarrel.position.clone()
 					};
 				}
 				
-				// Stocker les positions initiales des canons latéraux
+				// Canons latéraux
 				if (this.sideCannons) {
 					this.sideCannons.forEach(cannon => {
 						if (cannon.barrel) {
 							cannon.initialPosition = cannon.barrel.position.clone();
 						}
 					});
+				}
+				
+				// STOCKAGE DES POSITIONS DES CHENILLES
+				// Segments de chenilles gauches
+				if (this.leftTrackSegments && this.leftTrackSegments.length > 0) {
+					this.leftTrackInitialPositions = this.leftTrackSegments.map(segment => 
+						segment.position.clone()
+					);
+				}
+				
+				// Segments de chenilles droites
+				if (this.rightTrackSegments && this.rightTrackSegments.length > 0) {
+					this.rightTrackInitialPositions = this.rightTrackSegments.map(segment => 
+						segment.position.clone()
+					);
 				}
 			}
 			
@@ -3156,7 +3237,7 @@
 				// Groupe pour le canon qui sera orienté dans la direction du mouvement
 				this.cannonGroup = new THREE.Group();
 				this.cannonGroup.position.z = 0;
-				this.cannonGroup.position.y = -0.5;
+				this.cannonGroup.position.y = 0;
 				this.headGroup.add(this.cannonGroup);
 				
 				// Matériaux pour le canon
@@ -3206,6 +3287,27 @@
 
 				// Ajouter aux parties du corps
 				this.bodyParts.push(this.sight);
+			}
+			
+			// Reset de la position des chenilles à la position d'origine
+			resetTrackSegmentsToInitialPositions() {
+				// Réinitialiser les segments gauches
+				if (this.leftTrackSegments && this.leftTrackInitialPositions) {
+					this.leftTrackSegments.forEach((segment, index) => {
+						if (index < this.leftTrackInitialPositions.length) {
+							segment.position.copy(this.leftTrackInitialPositions[index]);
+						}
+					});
+				}
+				
+				// Réinitialiser les segments droits
+				if (this.rightTrackSegments && this.rightTrackInitialPositions) {
+					this.rightTrackSegments.forEach((segment, index) => {
+						if (index < this.rightTrackInitialPositions.length) {
+							segment.position.copy(this.rightTrackInitialPositions[index]);
+						}
+					});
+				}
 			}
 			
 			// Méthode pour mettre à jour l'interface utilisateur
@@ -4239,12 +4341,12 @@
 				}
 				
 				// Formater le temps restant
-				const minutes = Math.floor(timeLeft / 60000);
+				const minutes = Math.floor(timeLeft / 60000)-1000;
 				const seconds = Math.floor((timeLeft % 60000) / 1000);
 				const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 				
 				// Ajouter une classe d'alerte si moins de 5 minutes
-				const isWarning = timeLeft < 5 * 60 * 1000;
+				const isWarning = timeLeft < 2 * 60 * 1000;
 				
 				gameClock.innerHTML = `
 					<div class='game-info ${isWarning ? "time-warning" : ""}'>
