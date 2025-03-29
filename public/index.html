@@ -1877,6 +1877,7 @@
 				this.bodyHeight = 1;
 				this.bodyDepth = 0.5;
 				this.frameThickness = 0.08;
+				this.headHeight = 0.15; // Hauteur de la base de la tête
 				this.bottomThickness = this.frameThickness * 6; // Épaisseur du panneau inférieur
 				
 				// Dimensions des colonnes de processeurs (définies comme propriétés de classe)
@@ -2196,6 +2197,7 @@
 					}, 50);
 				}, 50);
 			}
+			
 			// Collecter un processeur
 			collectProcessor(processor) {
 				const type = processor.type;
@@ -2362,12 +2364,15 @@
             
 			// Mettre à jour l'échelle du robot
 			updateScale() {
+				// Appliquer la nouvelle échelle
 				this.mesh.scale.set(this.baseScale, this.baseScale, this.baseScale);
-				    // Signaler au système de collision que notre collider a changé
+				
+				// Réinitialiser les positions initiales stockées pour les animations
+				this.storeInitialCannonPositions();
+				
+				// Mettre à jour le système de collision
 				if (this.collisionSystem) {
-					// Retirer temporairement l'objet du système de collision
 					this.collisionSystem.removeObject(this);
-					// Le rajouter pour que le système recalcule les dimensions
 					this.collisionSystem.addObject(this);
 				}
 			}
@@ -2487,11 +2492,6 @@
 				// Le canon pointe toujours dans la même direction que le robot
 				// La rotation est déjà gérée par la hiérarchie des objets 3D
 				// Mais on pourrait ajouter ici des animations supplémentaires
-				
-				// Faire légèrement bouger le canon pour un effet de "respiration"
-				const time = performance.now() * 0.001;
-				const breathingOffset = Math.sin(time * 2) * 0.005;
-				this.cannonGroup.position.y = 0 + breathingOffset;
 			}
 			
 			// Créer un projectile
@@ -2569,11 +2569,9 @@
 			
 			// Effet de recul lors du tir
 			showRecoilEffect() {
-				// Si l'état initial n'est pas enregistré, le faire maintenant
+				// Vérifier que l'état initial existe
 				if (!this.cannonBarrelInitialState) {
-					this.cannonBarrelInitialState = {
-						position: this.cannonBarrel.position.clone()
-					};
+					this.storeInitialCannonPositions();
 				}
 				
 				// Reculer le canon
@@ -3099,9 +3097,13 @@
 				}
 				
 				// Stocker les positions initiales des canons latéraux
-				this.sideCannons.forEach(cannon => {
-					cannon.initialPosition = cannon.barrel.position.clone();
-				});
+				if (this.sideCannons) {
+					this.sideCannons.forEach(cannon => {
+						if (cannon.barrel) {
+							cannon.initialPosition = cannon.barrel.position.clone();
+						}
+					});
+				}
 			}
 			
 			// Créer la tête du robot
@@ -3128,8 +3130,10 @@
 					emissiveIntensity: 0.5
 				});
 				
-				// Base de la tête (forme cylindrique)
-				const headBaseGeometry = new THREE.CylinderGeometry(0.2, 0.25, 0.15, 12);
+				// Base de la tête (forme cubique/pavé)
+				const headWidth = 0.4;  // Largeur de la tête
+				const headDepth = 0.4;  // Profondeur de la tête
+				const headBaseGeometry = new THREE.BoxGeometry(headWidth, this.headHeight, headDepth);
 				this.headBase = new THREE.Mesh(headBaseGeometry, headMaterial);
 				this.headBase.castShadow = true;
 				this.headBase.receiveShadow = true;
