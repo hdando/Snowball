@@ -3926,7 +3926,7 @@
 				}
 			}
 			if (otherPlayer.cannonGroup) {
-				otherPlayer.cannonGroup.position.y += 0.5; // Ajuster uniquement le canon
+				otherPlayer.cannonGroup.position.y += 0; // Ajuster uniquement le canon
 			}
 			// Stocker la référence
 			otherPlayers[id] = otherPlayer;
@@ -4341,7 +4341,7 @@
 				}
 				
 				// Formater le temps restant
-				const minutes = Math.floor(timeLeft / 60000)-1000;
+				const minutes = Math.floor(timeLeft / 60000)-1;
 				const seconds = Math.floor((timeLeft % 60000) / 1000);
 				const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 				
