@@ -1133,7 +1133,6 @@
 							
 							// Appliquer directement l'effet visuel localement pour feedback immédiat
 							obj.showDamageEffect();
-							createDamageText(obj.mesh.position, this.damage);
 
 						}
 						
@@ -1978,7 +1977,7 @@
 				const halfHeight = this.gameMap.height / 2 - 2;
 				
 				this.mesh.position.x = Math.random() * halfWidth * 2 - halfWidth;
-				this.mesh.position.y = 0.5;  // Moitié de la hauteur du cube
+				this.mesh.position.y = 0.01;  //légèrement au-dessus du sol
 				this.mesh.position.z = Math.random() * halfHeight * 2 - halfHeight;
 			}
 
