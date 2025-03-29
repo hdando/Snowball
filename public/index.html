@@ -4070,6 +4070,11 @@
 
 		// Fonction pour créer un processeur venant du serveur
 		function createServerProcessor(processorData) {
+		    // Vérifier si un processeur avec cet ID existe déjà
+			if (gameMap.processors.some(p => p.id === processorData.id)) {
+				console.log(`Processeur ${processorData.id} déjà existant, ignoré`);
+				return;
+			}
 			const position = new THREE.Vector3(
 				processorData.position.x,
 				processorData.position.y,
@@ -4102,6 +4107,11 @@
 
 		// Fonction pour créer un canon venant du serveur
 		function createServerCannon(cannonData) {
+		    // Vérifier si un canon avec cet ID existe déjà
+			if (gameMap.cannons.some(c => c.id === cannonData.id)) {
+				console.log(`Canon ${cannonData.id} déjà existant, ignoré`);
+				return;
+			}
 			const position = new THREE.Vector3(
 				cannonData.position.x,
 				cannonData.position.y,
