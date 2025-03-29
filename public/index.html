@@ -2700,10 +2700,69 @@
 				// Effet visuel de destruction
 				this.showDestructionEffect();
 				
-                // Réinitialiser les canons lors de la mort
-                this.sideCannons = [];
-                this.sideCannonsGroup.clear();
-                
+				// Retirer le joueur du système de collision
+				if (this.collisionSystem) {
+					this.collisionSystem.removeObject(this);
+				}
+				
+				// Suppression du tag de nom
+				if (this.nameTag && this.nameTag.parentNode) {
+					document.body.removeChild(this.nameTag);
+					this.nameTag = null;
+				}
+				
+				// Nettoyer tous les projectiles actifs
+				if (this.projectiles) {
+					this.projectiles.forEach(p => {
+						if (p && p.destroy) p.destroy();
+					});
+					this.projectiles = [];
+				}
+				
+				// Supprimer complètement le modèle 3D de la scène
+				if (this.mesh && this.scene) {
+					// Disposer proprement de toutes les ressources
+					disposeThreeObject(this.mesh);
+					this.scene.remove(this.mesh);
+					this.mesh = null;
+				}
+				
+				// Si c'est le joueur principal, afficher l'écran de connexion
+				if (this.isMainPlayer) {
+					// Attendre un court délai pour voir l'explosion
+					setTimeout(() => {
+						// Réinitialiser le statut du jeu
+						gameStarted = false;
+						
+						// Réinitialiser les données du joueur pour une nouvelle partie
+						this.hp = 100;
+						this.maxHp = 100;
+						this.resistance = 10;
+						this.attack = 10;
+						this.attackSpeed = 0.5;
+						this.range = 10;
+						this.speed = 0.02;
+						this.repairSpeed = 0.5;
+						this.processorCounts = {
+							hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
+							range: 0, speed: 0, repairSpeed: 0
+						};
+						this.totalProcessors = 0;
+						this.baseScale = 1.0;
+						
+						// Afficher l'écran de connexion
+						const loginScreen = document.getElementById('login-screen');
+						if (loginScreen) {
+							loginScreen.style.display = 'flex';
+							
+							// Mettre le focus sur le champ de saisie du pseudo
+							const usernameInput = document.getElementById('username-input');
+							if (usernameInput) {
+								usernameInput.focus();
+							}
+						}
+					}, 2000); // Délai de 2 secondes pour voir l'explosion
+				}
 			}
 				
 			// Effet visuel lors de la destruction du robot
@@ -2728,18 +2787,21 @@
 				// Faire grandir puis disparaître l'explosion
 				let scale = 0.1;
 				const expandExplosion = () => {
-					scale += 0.2;
+					scale += 0.15;
 					explosion.scale.set(scale, scale, scale);
-					explosionMaterial.opacity -= 0.03;
+					explosionMaterial.opacity -= 0.05;
 					
-					if (scale < 5) {
+					if (scale < 2) {
 						requestAnimationFrame(expandExplosion);
 					} else {
+						// Nettoyer proprement les ressources
 						this.scene.remove(explosion);
+						explosionGeometry.dispose();
+						explosionMaterial.dispose();
 					}
 				};
 				
-				expandExplosion();
+				requestAnimationFrame(expandExplosion);
 			}
 			
 			//Conserver les couleurs originales
@@ -3317,6 +3379,9 @@
 			
 			// Méthode pour mettre à jour l'interface utilisateur
 			updateUI() {
+			
+				// Ne mettre à jour l'UI que pour le joueur principal
+				if (!this.isMainPlayer) return;
 				document.getElementById('hp').textContent = Math.floor(this.hp);
 				document.getElementById('maxhp').textContent = Math.floor(this.maxHp);
 				document.getElementById('atk').textContent = Math.floor(this.attack);
