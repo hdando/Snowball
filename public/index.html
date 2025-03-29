@@ -229,6 +229,9 @@
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js';
 
 		import { io } from 'https://cdn.socket.io/4.4.1/socket.io.esm.min.js';
+		
+		let listenersInitialized = false;		
+
 		function disposeThreeObject(obj) {
 			if (!obj) return;
 			
@@ -272,6 +275,7 @@
 				obj.texture.dispose();
 			}
 		}
+		
 		// Nom d'utilisateur par défaut
 		let username = `Robot-${Math.floor(Math.random() * 1000)}`;
 		
@@ -3547,6 +3551,11 @@
 
 		// Gérer les événements de socket.io pour le cycle de jeu
 		function setupSocketListeners() {
+		
+		    if (listenersInitialized) return;
+			
+			listenersInitialized = true;
+			
 			// Recevoir l'état initial du jeu
 			socket.on('gameState', (state) => {
 				console.log('État initial du jeu reçu:', state);
@@ -4322,7 +4331,7 @@
 				}
 				
 				// Formater le temps restant
-				const minutes = Math.floor(timeLeft / 60000)-1;
+				const minutes = Math.floor(timeLeft / 60000);
 				const seconds = Math.floor((timeLeft % 60000) / 1000);
 				const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 				
