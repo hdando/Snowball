@@ -1792,16 +1792,6 @@
                 for (let i = this.processors.length - 1; i >= 0; i--) {
                     this.processors[i].update();
                 }
-                
-                // Vérifier s'il faut créer de nouveaux processeurs
-                this.processorTypes.forEach(type => {
-                    this.spawnCounters[type] += deltaTime * 1000; // Convertir en millisecondes
-                    
-                    if (this.spawnCounters[type] >= this.spawnRates[type]) {
-                        this.spawnProcessor(type);
-                        this.spawnCounters[type] = 0;
-                    }
-                });
             }
             
             // Mettre à jour les canons
@@ -1809,16 +1799,7 @@
                 // Mise à jour des canons existants
                 for (let i = this.cannons.length - 1; i >= 0; i--) {
                     this.cannons[i].update();
-                }
-                
-                
-                // Vérifier s'il faut créer un nouveau canon
-                this.cannonSpawnCounter += deltaTime * 1000;
-                if (this.cannonSpawnCounter >= this.cannonSpawnRate) {
-                    this.spawnCannon();
-                    this.cannonSpawnCounter = 0;
-                }
-                
+                }                
             }
             
             // Supprimer un processeur de la liste
@@ -4541,11 +4522,11 @@
             // Réparer automatiquement le robot
             player.repair(deltaTime);
             
-            // Mettre à jour les processeurs sur la carte
+			// Mettre à jour les processeurs sur la carte (sans en créer de nouveaux)
 			for (let i = gameMap.processors.length - 1; i >= 0; i--) {
 				gameMap.processors[i].update();
 			}
-			// Mettre à jour seulement les canons existants
+			// Mettre à jour seulement les canons existants (sans en créer de nouveaux)
 			for (let i = gameMap.cannons.length - 1; i >= 0; i--) {
 				gameMap.cannons[i].update();
 			}
