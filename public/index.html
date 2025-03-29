@@ -437,7 +437,7 @@
 			
 			// Mettre à jour la position de la caméra
 			updateCamera(camera) {
-				if (!this.player.isAlive) return;
+				if (!player || !player.mesh || !player.isAlive) return;
 				
 				switch(this.mode) {
 					case 'thirdPerson':
@@ -3611,29 +3611,44 @@
 		});
 
 		// Fonction pour rejoindre la partie
-        function joinGame() {
-            // Récupérer le nom d'utilisateur
-            if (usernameInput.value.trim() !== '') {
-                username = usernameInput.value.trim();
-                player.username = username;
-            }
-            
-            // Masquer l'écran de connexion
-            loginScreen.style.display = 'none';
-            
-            // Vérifier si la connexion socket est déjà établie
-            if (socket.connected) {
-                console.log("Connexion déjà établie. Démarrage du jeu...");
-                startGame();
-            } else {
-                console.log("En attente de la connexion au serveur...");
-                // Attendre la connexion avant de démarrer le jeu
-                socket.on('connect', () => {
-                    console.log("Connexion établie. Démarrage du jeu...");
-                    startGame();
-                });
-            }
-        }
+		function joinGame() {
+			// Récupérer le nom d'utilisateur
+			if (usernameInput.value.trim() !== '') {
+				username = usernameInput.value.trim();
+			}
+			
+			// Masquer l'écran de connexion
+			loginScreen.style.display = 'none';
+			
+			// Si le joueur était mort ou n'existe pas, le recréer
+			if (!player || !player.mesh || !player.isAlive) {
+				// Stocker le nom d'utilisateur si le joueur existait déjà
+				const previousUsername = player ? player.username : username;
+				
+				// Créer un nouveau joueur
+				player = new Player(scene, gameMap, collisionSystem);
+				player.username = previousUsername || username;
+				
+				// Réinitialiser la caméra pour le nouveau joueur
+				cameraController = new CameraController(player);
+			} else {
+				// Mettre à jour le nom d'utilisateur
+				player.username = username;
+			}
+			
+			// Vérifier si la connexion socket est déjà établie
+			if (socket.connected) {
+				console.log("Connexion déjà établie. Démarrage du jeu...");
+				startGame();
+			} else {
+				console.log("En attente de la connexion au serveur...");
+				// Attendre la connexion avant de démarrer le jeu
+				socket.on('connect', () => {
+					console.log("Connexion établie. Démarrage du jeu...");
+					startGame();
+				});
+			}
+		}
        
 	   // Fonction pour mettre à jour la caméra
         function updateCamera() {
@@ -3803,9 +3818,11 @@
 						player.hp = data.hp;
 						player.updateUI();
 					}
-					// Voir l'effet visuel quand on est touché
-					createDamageText(player.mesh.position, data.damage);
-					player.showDamageEffect();
+					// Vérifier que notre mesh existe avant de créer l'effet visuel
+					if (player.mesh && player.isAlive) {
+						createDamageText(player.mesh.position, data.damage);
+						player.showDamageEffect();
+					}
 					
 				} else if (otherPlayers[data.id]) {
 					console.log("Joueur touché trouvé:", otherPlayers[data.id].username);
@@ -3901,11 +3918,18 @@
 		}
 
 		function startGame() {
-			
 			// Marquer le jeu comme démarré
 			gameStarted = true;
 			
-			// Informer le serveur que ce joueur rejoint la partie
+			// Vérifier que le joueur existe, est vivant et a un mesh
+			if (!player || !player.mesh || !player.isAlive) {
+				console.log("Recréation du joueur...");
+				player = new Player(scene, gameMap, collisionSystem);
+				player.username = username;
+				cameraController = new CameraController(player);
+			}
+			
+			// Maintenant que nous sommes sûrs que le joueur existe, informer le serveur
 			console.log("Envoi des informations du joueur au serveur...");
 			socket.emit('playerJoin', {
 				position: {
@@ -3945,7 +3969,7 @@
 			// Créer l'interface pour le cycle de jeu
 			createGameCycleUI();
 		}
-
+		
 		// Fonction pour mettre à jour le tableau de score
 		function updateScoreboard() {
 			const playersList = document.getElementById('players-list');
@@ -4025,7 +4049,7 @@
 		// Fonction pour mettre à jour la position d'un autre joueur
 		function updateOtherPlayerPosition(id, playerData) {
 			const otherPlayer = otherPlayers[id];
-			if (!otherPlayer) return;
+			if (!otherPlayer || !otherPlayer.mesh || !otherPlayer.isAlive) return;
 			
 			// Mettre à jour la position et la rotation
 			otherPlayer.mesh.position.set(
@@ -4120,7 +4144,7 @@
 
 		// Fonction pour mettre à jour la position du tag de nom
 		function updatePlayerNameTag(player) {
-			if (!player.nameTag || !player.isAlive) return;
+			if (!player || !player.nameTag || !player.isAlive || !player.mesh) return;
 			
 			// Calculer la position 2D à partir de la position 3D
 			const vector = new THREE.Vector3();
