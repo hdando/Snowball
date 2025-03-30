@@ -69,7 +69,7 @@ const GameState = {
 };
 
 // Configuration des durées (en millisecondes)
-const GAME_DURATION = 5 * 60 * 1000;  // 5 minutes 
+const GAME_DURATION = 5 * 60 * 1000;  // 5 minutes
 const PODIUM_DURATION = 60 * 1000;     // 1 minute
 const RESTART_DURATION = 5 * 1000;     // 5 secondes pour le redémarrage
 
@@ -239,10 +239,9 @@ function determineWinners() {
   
 // Réinitialiser l'état du jeu
 function resetGameState() {
-  // Sauvegarder la liste des joueurs
-  const connectedPlayers = {...gameState.players};
-  
+
   // Réinitialiser l'état du jeu
+  const connectedPlayers = {};
   gameState.processors = {};
   gameState.cannons = {};
   gameState.projectiles = {};
