@@ -3731,21 +3731,33 @@
                 startCountdown(data.duration / 1000, 'Redémarrage dans');
             });
 
-            socket.on('gameRestarted', (data) => {
-                console.log('Nouvelle partie!', data);
-                
-                // Masquer le podium
-                hidePodium();
-                
-                // Réinitialiser l'interface utilisateur
-                resetUI();
-                
-                // Mettre à jour l'état du jeu
-                updateGameState(data.gameState);
-                
-                // Afficher l'horloge de la partie
-                showGameClock(data.gameInfo.endTime);
-            });
+			socket.on('gameRestarted', (data) => {
+			  console.log('Nouvelle partie!', data);
+			  
+			  // Masquer le podium
+			  hidePodium();
+			  
+			  // Réinitialiser l'interface utilisateur
+			  resetUI();
+			  
+			  // Mettre à jour l'état du jeu
+			  updateGameState(data.gameState);
+			  
+			  // Afficher l'écran de connexion plutôt que de garder le joueur connecté
+			  const loginScreen = document.getElementById('login-screen');
+			  if (loginScreen) {
+				loginScreen.style.display = 'flex';
+				
+				// Mettre le focus sur le champ de saisie du pseudo
+				const usernameInput = document.getElementById('username-input');
+				if (usernameInput) {
+				  usernameInput.focus();
+				}
+			  }
+			  
+			  // Afficher l'horloge de la partie
+			  showGameClock(data.gameInfo.endTime);
+			});
 
 			// Un nouveau joueur rejoint
 			socket.on('playerJoined', (playerData) => {
@@ -4351,8 +4363,8 @@
 			
 			// Définir l'ordre d'affichage et les caractéristiques
 			const podiumConfig = [
-				{ position: 1, index: 0, height: '280px', medal: '🥇', color: 'linear-gradient(to bottom, #FFD700, #FFA500)', title: '1er' },
-				{ position: 0, index: 1, height: '220px', medal: '🥈', color: 'linear-gradient(to bottom, #C0C0C0, #A9A9A9)', title: '2ème' },
+				{ position: 0, index: 0, height: '280px', medal: '🥇', color: 'linear-gradient(to bottom, #FFD700, #FFA500)', title: '1er' },
+				{ position: 1, index: 1, height: '220px', medal: '🥈', color: 'linear-gradient(to bottom, #C0C0C0, #A9A9A9)', title: '2ème' },
 				{ position: 2, index: 2, height: '180px', medal: '🥉', color: 'linear-gradient(to bottom, #CD7F32, #8B4513)', title: '3ème' }
 			];
 			
