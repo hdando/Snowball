@@ -3512,8 +3512,8 @@
 			
 			// Marquer comme détruit si nécessaire
 			if (structureData.destroyed) {
-				tree.isAlive = false;
-				tree.die();
+			  tree.isAlive = false;
+			  tree.destroy(); // Appeler directement destroy() plutôt que die()
 			}
 			
 			// Ajouter aux listes
@@ -3559,8 +3559,8 @@
         const gameMap = new GameMap(scene, collisionSystem);
 
         // Initialisation du robot du joueur
-        const player = new Player(scene, gameMap, collisionSystem);
-        
+		let player = null; // Initialiser à null
+
         // Initialisation du contrôleur de caméra
         let cameraController = new CameraController(player);
 
@@ -3612,6 +3612,16 @@
 			
 			// Masquer l'écran de connexion
 			loginScreen.style.display = 'none';
+			
+		    // Créer le joueur seulement maintenant
+			player = new Player(scene, gameMap, collisionSystem);
+			player.username = username;
+			
+			// Initialiser le contrôleur de caméra après la création du joueur
+			cameraController = new CameraController(player);
+			
+			// Marquer le jeu comme démarré
+			gameStarted = true;
 			
 			// Si le joueur était mort ou n'existe pas, le recréer
 			if (!player || !player.mesh || !player.isAlive) {
