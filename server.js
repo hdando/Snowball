@@ -868,12 +868,18 @@ io.on('connection', (socket) => {
       console.log("Données de processeur incomplètes");
       return;
     }
-    
-    // Vérifier que le processeur existe
-    if (!gameState.processors[data.processorId]) {
-      console.log(`Processeur inexistant: ${data.processorId}`);
-      return;
-    }
+
+	// Vérifier que le processeur existe
+	if (!gameState.processors[data.processorId]) {
+	console.log(`Processeur inexistant ou déjà collecté: ${data.processorId}`);
+
+	// Envoyer une mise à jour de synchronisation au joueur
+	socket.emit('syncGameState', {
+	  processors: Object.keys(gameState.processors),
+	  players: { [socket.id]: gameState.players[socket.id] }
+	});
+	return;
+	}
     
     // Vérifier que le joueur existe
     if (!gameState.players[socket.id]) {
@@ -947,13 +953,14 @@ io.on('connection', (socket) => {
     gameState.players[socket.id].stats.processorCounts[processorType]++;
     
     // Diffuser la mise à jour des statistiques
-    io.emit('playerStatsUpdated', {
-      id: socket.id,
-      stats: gameState.players[socket.id].stats,
-      hp: gameState.players[socket.id].hp,
-      maxHp: gameState.players[socket.id].maxHp
-    });
+	io.emit('playerStatsUpdated', {
+	id: socket.id,
+	stats: gameState.players[socket.id].stats,
+	hp: gameState.players[socket.id].hp,
+	maxHp: gameState.players[socket.id].maxHp,
+	totalProcessors: Object.values(gameState.players[socket.id].stats.processorCounts).reduce((a, b) => a + b, 0)
   });
+});
   
   // Nouvel événement pour la collecte de canons
   socket.on('cannonCollected', (data) => {
