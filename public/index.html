@@ -3734,16 +3734,22 @@
 			socket.on('gameRestarted', (data) => {
 			  console.log('Nouvelle partie!', data);
 			  
+			  // Marquer le jeu comme non démarré
+			  gameStarted = false;
+			  
 			  // Masquer le podium
 			  hidePodium();
 			  
-			  // Réinitialiser l'interface utilisateur
+			  // Réinitialiser l'interface utilisateur et vider le leaderboard
 			  resetUI();
 			  
-			  // Mettre à jour l'état du jeu
+			  // Nettoyer explicitement tous les objets du jeu
+			  cleanupGameObjects();
+			  
+			  // Mettre à jour l'état du jeu avec les nouvelles données
 			  updateGameState(data.gameState);
 			  
-			  // Afficher l'écran de connexion plutôt que de garder le joueur connecté
+			  // Afficher l'écran de connexion
 			  const loginScreen = document.getElementById('login-screen');
 			  if (loginScreen) {
 				loginScreen.style.display = 'flex';
@@ -3755,9 +3761,9 @@
 				}
 			  }
 			  
-			  // Afficher l'horloge de la partie
+			  // Réinitialiser et afficher l'horloge de la partie
 			  showGameClock(data.gameInfo.endTime);
-			});
+			}
 
 			// Un nouveau joueur rejoint
 			socket.on('playerJoined', (playerData) => {
@@ -3928,6 +3934,38 @@
 				}
 			});
 		}
+		
+		// Fonction pour nettoyer tous les objets du jeu
+		function cleanupGameObjects() {
+		  // Supprimer tous les processeurs
+		  gameMap.processors.forEach(processor => {
+			processor.destroy();
+		  });
+		  gameMap.processors = [];
+		  
+		  // Supprimer tous les canons
+		  gameMap.cannons.forEach(cannon => {
+			cannon.destroy();
+		  });
+		  gameMap.cannons = [];
+		  
+		  // Supprimer tous les projectiles
+		  if (player) {
+			player.projectiles.forEach(projectile => {
+			  projectile.destroy();
+			});
+			player.projectiles = [];
+		  }
+		  
+		  // Supprimer les projectiles des autres joueurs
+		  Object.values(otherPlayers).forEach(otherPlayer => {
+			otherPlayer.projectiles.forEach(projectile => {
+			  projectile.destroy();
+			});
+			otherPlayer.projectiles = [];
+		  });
+		}
+		
 
 		function startGame() {
 			// Marquer le jeu comme démarré
@@ -4454,44 +4492,54 @@
 			updateCounter();
 		}
 
+		// Variable globale pour stocker l'ID de l'animation de l'horloge
+		let clockAnimationId = null;
+		
 		// Afficher l'horloge de la partie
 		function showGameClock(endTime) {
-			const gameClock = document.getElementById('game-clock');
-			if (!gameClock) return;
+		  const gameClock = document.getElementById('game-clock');
+		  if (!gameClock) return;
+		  
+		  // Arrêter l'animation précédente si elle existe
+		  if (clockAnimationId) {
+			cancelAnimationFrame(clockAnimationId);
+			clockAnimationId = null;
+		  }
+		  
+		  gameClock.style.display = 'block';
+		  gameClock.innerHTML = ""; // Vider le contenu précédent
+		  
+		  // Mettre à jour l'horloge chaque seconde
+		  const updateClock = () => {
+			const now = Date.now();
+			const timeLeft = endTime - now;
 			
-			gameClock.style.display = 'block';
+			if (timeLeft <= 0) {
+			  gameClock.innerHTML = "<div class='game-info time-warning'>⏱️ Fin de partie!</div>";
+			  clockAnimationId = null;
+			  return;
+			}
 			
-			// Mettre à jour l'horloge chaque seconde
-			const updateClock = () => {
-				const now = Date.now();
-				const timeLeft = endTime - now;
-				
-				if (timeLeft <= 0) {
-					gameClock.innerHTML = "<div class='game-info time-warning'>⏱️ Fin de partie!</div>";
-					return;
-				}
-				
-				// Formater le temps restant
-				const minutes = Math.floor(timeLeft / 60000);
-				const seconds = Math.floor((timeLeft % 60000) / 1000);
-				const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-				
-				// Ajouter une classe d'alerte si moins de 5 minutes
-				const isWarning = timeLeft < 2 * 60 * 1000;
-				
-				gameClock.innerHTML = `
-					<div class='game-info ${isWarning ? "time-warning" : ""}'>
-						⏱️ Temps restant: ${timeString}
-					</div>
-				`;
-				
-				// Continuer à mettre à jour
-				requestAnimationFrame(updateClock);
-			};
+			// Formater le temps restant
+			const minutes = Math.floor(timeLeft / 60000);
+			const seconds = Math.floor((timeLeft % 60000) / 1000);
+			const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 			
-			updateClock();
+			// Ajouter une classe d'alerte si moins de 5 minutes
+			const isWarning = timeLeft < 2 * 60 * 1000;
+			
+			gameClock.innerHTML = `
+			  <div class='game-info ${isWarning ? "time-warning" : ""}'>
+				⏱️ Temps restant: ${timeString}
+			  </div>
+			`;
+			
+			// Continuer à mettre à jour
+			clockAnimationId = requestAnimationFrame(updateClock);
+		  };
+		  
+		  updateClock();
 		}
-
 		// Afficher un message de redémarrage
 		function showRestartingMessage() {
 			const notification = document.createElement('div');
@@ -4534,19 +4582,27 @@
 
 		// Réinitialiser l'interface utilisateur
 		function resetUI() {
-			// Réinitialiser les statistiques
-			document.getElementById('hp').textContent = '100';
-			document.getElementById('maxhp').textContent = '100';
-			document.getElementById('atk').textContent = '10';
-			document.getElementById('def').textContent = '10';
-			document.getElementById('atkspeed').textContent = '0.5';
-			document.getElementById('range').textContent = '10';
-			document.getElementById('speed').textContent = '0.02';
-			document.getElementById('repair').textContent = '0.1';
-			document.getElementById('processors').textContent = '0';
-			
-			// Mettre à jour le tableau de score
-			updateScoreboard();
+		  // Réinitialiser les statistiques
+		  document.getElementById('hp').textContent = '100';
+		  document.getElementById('maxhp').textContent = '100';
+		  document.getElementById('atk').textContent = '10';
+		  document.getElementById('def').textContent = '10';
+		  document.getElementById('atkspeed').textContent = '0.5';
+		  document.getElementById('range').textContent = '10';
+		  document.getElementById('speed').textContent = '0.02';
+		  document.getElementById('repair').textContent = '0.1';
+		  document.getElementById('processors').textContent = '0';
+		  
+		  // Vider complètement le leaderboard
+		  const playersList = document.getElementById('players-list');
+		  if (playersList) {
+			playersList.innerHTML = '';
+		  }
+		  
+		  // Vider également la liste des autres joueurs en mémoire
+		  Object.keys(otherPlayers).forEach(id => {
+			removeOtherPlayer(id);
+		  });
 		}
 
 		// Mettre à jour l'état du jeu
