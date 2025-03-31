@@ -454,7 +454,6 @@ function spawnDroppedProcessors(playerId, position) {
         type,
         position: processorPosition,
         boost: boostValues[type],
-        isBouncing: true
       };
       
       // Diffuser l'information du nouveau processeur à tous les joueurs
