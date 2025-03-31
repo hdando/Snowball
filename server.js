@@ -143,17 +143,20 @@ function getDefaultPlayerStats() {
 
 // Gestion du cycle de jeu
 function startGameCycle() {
-  // Mettre à jour l'heure de fin pour qu'elle soit cohérente
+  // Réinitialiser correctement les temps
   currentGameState.startTime = Date.now();
   currentGameState.endTime = Date.now() + GAME_DURATION;
   
   console.log(`Nouvelle partie démarrée: ${currentGameState.gameId}`);
   console.log(`La partie se terminera à: ${new Date(currentGameState.endTime).toLocaleTimeString()}`);
   
+  // Planifier la fin de la partie en utilisant l'endTime calculé
+  const timeToEnd = currentGameState.endTime - Date.now();
+  
   // Planifier la fin de la partie
   setTimeout(() => {
     endGame();
-  }, GAME_DURATION);
+  }, timeToEnd); // Utiliser le temps calculé, pas GAME_DURATION directement
 }
 
 // Fonction pour terminer la partie et afficher le podium
@@ -278,11 +281,12 @@ function resetGameState() {
   // Mise à jour de l'état de la partie actuelle
   currentGameState = {
     state: GameState.PLAYING,
-    startTime: Date.now(),
-    endTime: Date.now() + GAME_DURATION,
+    startTime: null, // Les temps seront définis dans startGameCycle()
+    endTime: null,   // Les temps seront définis dans startGameCycle()
     winners: [],
     gameId: generateGameId()
   };
+  
   
   // Réinitialiser les compteurs d'IDs
   processorId = 0;
@@ -477,13 +481,14 @@ io.on('connection', (socket) => {
   
   // Envoyer l'état actuel du jeu et les informations de la partie au nouveau joueur
   socket.emit('gameState', {
-    ...gameState,
-    gameInfo: {
-      state: currentGameState.state,
-      gameId: currentGameState.gameId,
-      startTime: currentGameState.startTime,
-      endTime: currentGameState.endTime
-    }
+	...gameState,
+	gameInfo: {
+		state: currentGameState.state,
+		gameId: currentGameState.gameId,
+		startTime: currentGameState.startTime,
+		endTime: currentGameState.endTime,
+		currentTime: Date.now() // Ajouter l'heure actuelle du serveur pour référence
+	}
   });
   
   // Si la partie est en mode podium, envoyer aussi les gagnants
