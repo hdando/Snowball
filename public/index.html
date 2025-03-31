@@ -677,22 +677,13 @@
                 this.collisionSystem = collisionSystem;
                 this.collisionSystem.addObject(this);
                 
-                // État d'animation pour le rebond quand un joueur est détruit
-                this.isBouncing = false;
-                this.bounceVelocity = { x: 0, y: 0, z: 0 };
-                this.gravity = 0.005;
-                this.friction = 0.98;
             }
             
             // Mise à jour du processeur
             update() {
-                if (this.isBouncing) {
-                    // Animation de rebond physique
-                    this.updateBounce();
-                } else {
-                    // Animation de flottement standard
-                    this.updateFloat();
-                }
+
+				// Animation de flottement standard
+				this.updateFloat();
                 
                 // Rotation douce
                 this.mesh.rotation.y += 0.01;
@@ -703,77 +694,6 @@
                 const time = performance.now() * 0.001;
                 // Amplitude de flottement augmentée pour plus de mouvement
                 this.mesh.position.y = this.floatHeight + Math.sin(time * this.floatSpeed + this.floatOffset) * 0.15;
-            }
-            
-            // Animation de rebond
-            updateBounce() {
-                // Appliquer la gravité à la vélocité verticale
-                this.bounceVelocity.y -= this.gravity;
-                
-                // Mettre à jour la position
-                this.mesh.position.x += this.bounceVelocity.x;
-                this.mesh.position.y += this.bounceVelocity.y;
-                this.mesh.position.z += this.bounceVelocity.z;
-                
-                // Appliquer la friction aux composantes horizontales
-                this.bounceVelocity.x *= this.friction;
-                this.bounceVelocity.z *= this.friction;
-                
-                // Rebond au sol
-                if (this.mesh.position.y < 0.5) {
-                    this.mesh.position.y = 0.5;
-                    
-                    // Rebond avec perte d'énergie
-                    if (Math.abs(this.bounceVelocity.y) > 0.01) {
-                        this.bounceVelocity.y = -this.bounceVelocity.y * 0.6;
-                    } else {
-                        // Arrêter le rebond si l'énergie est trop basse
-                        this.bounceVelocity.y = 0;
-                        this.isBouncing = false;
-                        this.floatHeight = 0.5;
-                    }
-                }
-                
-                // Vérifier les limites de la carte pour éviter que les processeurs ne sortent
-                const mapHalfWidth = 50; // Moitié de la largeur de la carte
-                const mapHalfHeight = 50; // Moitié de la hauteur de la carte
-                
-                // Bornes X
-                if (Math.abs(this.mesh.position.x) > mapHalfWidth - 1) {
-                    // Inverser la direction et réduire la vélocité
-                    if (this.mesh.position.x > 0) {
-                        this.mesh.position.x = mapHalfWidth - 1;
-                    } else {
-                        this.mesh.position.x = -(mapHalfWidth - 1);
-                    }
-                    this.bounceVelocity.x = -this.bounceVelocity.x * 0.8;
-                }
-                
-                // Bornes Z
-                if (Math.abs(this.mesh.position.z) > mapHalfHeight - 1) {
-                    // Inverser la direction et réduire la vélocité
-                    if (this.mesh.position.z > 0) {
-                        this.mesh.position.z = mapHalfHeight - 1;
-                    } else {
-                        this.mesh.position.z = -(mapHalfHeight - 1);
-                    }
-                    this.bounceVelocity.z = -this.bounceVelocity.z * 0.8;
-                }
-            }
-            
-            // Initialiser un rebond avec une vélocité aléatoire
-            startBounce(origin) {
-                this.isBouncing = true;
-                
-                // Direction aléatoire par rapport à l'origine
-                const angle = Math.random() * Math.PI * 2;
-                const distance = 0.5 + Math.random() * 1.5;
-                
-                this.bounceVelocity = {
-                    x: Math.cos(angle) * distance * 0.05,
-                    y: 0.1 + Math.random() * 0.1,
-                    z: Math.sin(angle) * distance * 0.05
-                };
             }
             
             // Détruire le processeur
@@ -926,20 +846,6 @@
                 }
             }
             
-            // Initialiser un rebond avec une vélocité aléatoire
-            startBounce(origin) {
-                this.isBouncing = true;
-                
-                // Direction aléatoire par rapport à l'origine
-                const angle = Math.random() * Math.PI * 2;
-                const distance = 0.5 + Math.random() * 1.5;
-                
-                this.bounceVelocity = {
-                    x: Math.cos(angle) * distance * 0.05,
-                    y: 0.1 + Math.random() * 0.1,
-                    z: Math.sin(angle) * distance * 0.05
-                };
-            }
             
             // Détruire le canon
             destroy() {
@@ -1838,8 +1744,6 @@
                         const processor = new Processor(this.scene, spawnPos, type, this.collisionSystem);
                         this.processors.push(processor);
                         
-                        // Démarrer l'animation de rebond
-                        processor.startBounce(position);
                     }
                 });
             }
@@ -4431,11 +4335,6 @@
 			const processor = new Processor(scene, position, processorData.type, collisionSystem);
 			processor.id = processorData.id;
 			processor.boost = processorData.boost;
-			
-			// Si le processeur rebondit (largué par un joueur)
-			if (processorData.isBouncing) {
-				processor.startBounce();
-			}
 			
 			// Ajouter à la liste des processeurs de la carte
 			gameMap.processors.push(processor);
