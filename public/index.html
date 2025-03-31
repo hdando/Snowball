@@ -279,6 +279,8 @@
 		// Nom d'utilisateur par défaut
 		let username = `Robot-${Math.floor(Math.random() * 1000)}`;
 		
+		let animationId = null;
+		
 		// Établir la connexion WebSocket
 		const socket = io('https://airobotwarfare.onrender.com',{
 			reconnectionAttempts: 5,       // Augmenter le nombre de tentatives de reconnexion
@@ -4610,8 +4612,10 @@
 			// Supprimer tous les éléments de jeu existants
 			
 			// Arrêter toutes les animations en cours
-			cancelAnimationFrame(animationId);  // Assurez-vous que l'ID d'animation principal est accessible
-
+			if (animationId) {
+				cancelAnimationFrame(animationId);
+				animationId = null;
+			}
 			// Supprimer les processeurs
 			gameMap.processors.forEach(processor => {
 				if (processor.isBouncing) {
@@ -4706,6 +4710,13 @@
 					});
 				}
 			}
+			
+			// À la fin de updateGameState, nous devons redémarrer l'animation
+			// mais seulement si nous ne sommes pas sur l'écran de connexion
+			if (gameStarted) {
+				animationId = requestAnimationFrame(animate);
+			}
+			
 		}
 
         // Boucle d'animation
@@ -4713,7 +4724,7 @@
         let processorSpawnEnabled = true; // Variable pour activer/désactiver l'apparition des processeurs
 
         function animate(time) {
-            requestAnimationFrame(animate);
+			animationId = requestAnimationFrame(animate);
             
             // Convertir le temps en millisecondes et calculer le delta
             const currentTime = time;
@@ -4722,6 +4733,8 @@
             // Déplacer le joueur selon les touches pressées
             player.move(keys);
             
+			updatePlayerNameTag(player);
+			
             // Gérer les attaques
             player.doAttack(keys, currentTime);
             
