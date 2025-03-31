@@ -463,10 +463,7 @@ function spawnDroppedProcessors(playerId, position) {
   });
 }
 
-socket.on('requestProcessorsUpdate', () => {
-  // Envoyer la liste complète des processeurs actuels
-  socket.emit('processorsUpdate', gameState.processors);
-});
+
 
 // GESTION DES CONNEXIONS ET ÉVÉNEMENTS
 // -----------------------------------
@@ -1067,6 +1064,13 @@ io.on('connection', (socket) => {
     // Informer tous les autres joueurs de la déconnexion
     io.emit('playerLeft', socket.id);
   });
+  
+	socket.on('requestProcessorsUpdate', () => {
+		// Envoyer la liste complète des processeurs actuels
+		socket.emit('processorsUpdate', gameState.processors);
+	});
+  
+  
 });
 
 // Appeler cette fonction au démarrage du serveur
