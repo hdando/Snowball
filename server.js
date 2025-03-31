@@ -69,7 +69,7 @@ const GameState = {
 };
 
 // Configuration des durées (en millisecondes)
-const GAME_DURATION = 5 * 60 * 1000;  // 5 minutes
+const GAME_DURATION = 10 * 60 * 1000;  // 10 minutes
 const PODIUM_DURATION = 60 * 1000;     // 1 minute
 const RESTART_DURATION = 5 * 1000;     // 5 secondes pour le redémarrage
 
@@ -143,6 +143,10 @@ function getDefaultPlayerStats() {
 
 // Gestion du cycle de jeu
 function startGameCycle() {
+  // Mettre à jour l'heure de fin pour qu'elle soit cohérente
+  currentGameState.startTime = Date.now();
+  currentGameState.endTime = Date.now() + GAME_DURATION;
+  
   console.log(`Nouvelle partie démarrée: ${currentGameState.gameId}`);
   console.log(`La partie se terminera à: ${new Date(currentGameState.endTime).toLocaleTimeString()}`);
   
