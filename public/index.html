@@ -1516,9 +1516,16 @@
 			
 			// Méthode pour recevoir des dégâts
 			takeDamage(amount) {
-				if (!this.isAlive) return;
+				// Trouver le propriétaire du projectile qui a causé les dégâts
+				if (this.isMainPlayer && projectileData && projectileData.ownerId) {
+					// Stocker le joueur qui nous a tiré dessus
+					if (otherPlayers[projectileData.ownerId]) {
+						this.lastKiller = otherPlayers[projectileData.ownerId];
+					}
+				}
 				
-			
+				if (!this.isAlive) return;
+							
 				// Afficher le texte des dégâts
 				//createDamageText(this.mesh.position, amount); Mis en commentaire pour éviter de voir le message deux fois
 				
@@ -2686,10 +2693,10 @@
 				// Créer un objet pour suivre combien de processeurs de chaque type vont tomber
 				const droppedProcessors = {};
 				
-				// Pour chaque type de processeur, faire tomber 1/10 des processeurs
+				// Pour chaque type de processeur, faire tomber 1/2 des processeurs
 				Object.entries(this.processorCounts).forEach(([type, count]) => {
 					// Calculer combien de processeurs vont tomber (arrondi à l'entier)
-					const dropCount = Math.floor(count / 10);
+					const dropCount = Math.floor(count / 2);
 					
 					if (dropCount > 0) {
 						droppedProcessors[type] = dropCount;
@@ -2736,37 +2743,133 @@
 						// Réinitialiser le statut du jeu
 						gameStarted = false;
 						
-						// Réinitialiser les données du joueur pour une nouvelle partie
-						this.hp = 100;
-						this.maxHp = 100;
-						this.resistance = 10;
-						this.attack = 10;
-						this.attackSpeed = 0.5;
-						this.range = 10;
-						this.speed = 0.02;
-						this.repairSpeed = 0.5;
-						this.processorCounts = {
-							hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
-							range: 0, speed: 0, repairSpeed: 0
-						};
-						this.totalProcessors = 0;
-						this.baseScale = 1.0;
-						
-						// Afficher l'écran de connexion
-						const loginScreen = document.getElementById('login-screen');
-						if (loginScreen) {
-							loginScreen.style.display = 'flex';
-							
-							// Mettre le focus sur le champ de saisie du pseudo
-							const usernameInput = document.getElementById('username-input');
-							if (usernameInput) {
-								usernameInput.focus();
-							}
-						}
+						// Créer l'écran de mort
+						createDeathScreen(this.lastKiller);
 					}, 2000); // Délai de 2 secondes pour voir l'explosion
 				}
+
 			}
+			
+			// Ajouter cette fonction après la définition de la classe Player
+			function createDeathScreen(killer) {
+				// Si killer est undefined, utiliser un message par défaut
+				const killerName = killer ? killer.username : "un adversaire inconnu";
 				
+				// Créer l'élément principal de l'écran de mort
+				const deathScreen = document.createElement('div');
+				deathScreen.id = 'death-screen';
+				deathScreen.style.position = 'absolute';
+				deathScreen.style.top = '0';
+				deathScreen.style.left = '0';
+				deathScreen.style.width = '100%';
+				deathScreen.style.height = '100%';
+				deathScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+				deathScreen.style.display = 'flex';
+				deathScreen.style.flexDirection = 'column';
+				deathScreen.style.justifyContent = 'center';
+				deathScreen.style.alignItems = 'center';
+				deathScreen.style.zIndex = '2000';
+				deathScreen.style.fontFamily = 'Arial, sans-serif';
+				deathScreen.style.color = 'white';
+				
+				// Ajouter le message principal
+				const messageElement = document.createElement('h1');
+				messageElement.textContent = `Vous avez été tué par ${killerName}`;
+				messageElement.style.fontSize = '36px';
+				messageElement.style.marginBottom = '30px';
+				messageElement.style.textAlign = 'center';
+				messageElement.style.color = '#ff3333';
+				messageElement.style.textShadow = '0 0 10px #ff0000';
+				deathScreen.appendChild(messageElement);
+				
+				// Conteneur pour les statistiques et le bouton
+				const contentContainer = document.createElement('div');
+				contentContainer.style.display = 'flex';
+				contentContainer.style.width = '80%';
+				contentContainer.style.maxWidth = '900px';
+				contentContainer.style.justifyContent = 'space-between';
+				contentContainer.style.alignItems = 'center';
+				deathScreen.appendChild(contentContainer);
+				
+				// Créer le bouton de rejouer
+				const replayButton = document.createElement('button');
+				replayButton.textContent = 'REJOUER';
+				replayButton.style.fontSize = '24px';
+				replayButton.style.padding = '15px 40px';
+				replayButton.style.backgroundColor = '#4CAF50';
+				replayButton.style.color = 'white';
+				replayButton.style.border = 'none';
+				replayButton.style.borderRadius = '5px';
+				replayButton.style.cursor = 'pointer';
+				replayButton.style.margin = '0 auto';
+				replayButton.style.transition = 'background-color 0.3s';
+				
+				// Effet de survol
+				replayButton.addEventListener('mouseover', () => {
+					replayButton.style.backgroundColor = '#45a049';
+				});
+				replayButton.addEventListener('mouseout', () => {
+					replayButton.style.backgroundColor = '#4CAF50';
+				});
+				
+				// Action du bouton: rafraîchir la page
+				replayButton.addEventListener('click', () => {
+					window.location.reload();
+				});
+				
+				contentContainer.appendChild(replayButton);
+				
+				// Ajouter les statistiques du tueur si elles sont disponibles
+				if (killer) {
+					const statsContainer = document.createElement('div');
+					statsContainer.style.backgroundColor = 'rgba(50, 50, 50, 0.7)';
+					statsContainer.style.padding = '20px';
+					statsContainer.style.borderRadius = '10px';
+					statsContainer.style.minWidth = '250px';
+					
+					const statsTitle = document.createElement('h3');
+					statsTitle.textContent = `Statistiques de ${killer.username}`;
+					statsTitle.style.marginTop = '0';
+					statsTitle.style.marginBottom = '15px';
+					statsTitle.style.textAlign = 'center';
+					statsContainer.appendChild(statsTitle);
+					
+					// Formatter et ajouter chaque statistique
+					const stats = [
+						{ name: 'HP', value: Math.floor(killer.hp) + '/' + Math.floor(killer.maxHp) },
+						{ name: 'Défense', value: Math.floor(killer.resistance) },
+						{ name: 'Attaque', value: Math.floor(killer.attack) },
+						{ name: 'Cadence', value: killer.attackSpeed.toFixed(2) },
+						{ name: 'Portée', value: Math.floor(killer.range) },
+						{ name: 'Vitesse', value: killer.speed.toFixed(3) },
+						{ name: 'Processeurs', value: killer.totalProcessors || 0 }
+					];
+					
+					stats.forEach(stat => {
+						const statRow = document.createElement('div');
+						statRow.style.display = 'flex';
+						statRow.style.justifyContent = 'space-between';
+						statRow.style.marginBottom = '8px';
+						
+						const statName = document.createElement('span');
+						statName.textContent = stat.name + ':';
+						statRow.appendChild(statName);
+						
+						const statValue = document.createElement('span');
+						statValue.textContent = stat.value;
+						statValue.style.fontWeight = 'bold';
+						statRow.appendChild(statValue);
+						
+						statsContainer.appendChild(statRow);
+					});
+					
+					contentContainer.appendChild(statsContainer);
+				}
+				
+				// Ajouter l'écran à la page
+				document.body.appendChild(deathScreen);
+			}
+			
 			// Effet visuel lors de la destruction du robot
 			showDestructionEffect() {
 				// Masquer visuellement le robot (vous pourriez ajouter une animation plus complexe)
@@ -3571,7 +3674,7 @@
         const player = new Player(scene, gameMap, collisionSystem);
         
         // Initialisation du contrôleur de caméra
-        const cameraController = new CameraController(player);
+        let cameraController = new CameraController(player);
 
         // Positionnement et configuration de la caméra
         camera.position.set(0, 30, 30); // Position la caméra en hauteur et en retrait
@@ -3734,37 +3837,12 @@
             });
 
 			socket.on('gameRestarted', (data) => {
-			  console.log('Nouvelle partie!', data);
+			  console.log('Nouvelle partie! Rafraîchissement de la page...');
 			  
-			  // Marquer le jeu comme non démarré
-			  gameStarted = false;
-			  
-			  // Masquer le podium
-			  hidePodium();
-			  
-			  // Réinitialiser l'interface utilisateur et vider le leaderboard
-			  resetUI();
-			  
-			  // Nettoyer explicitement tous les objets du jeu
-			  cleanupGameObjects();
-			  
-			  // Mettre à jour l'état du jeu avec les nouvelles données
-			  updateGameState(data.gameState);
-			  
-			  // Afficher l'écran de connexion
-			  const loginScreen = document.getElementById('login-screen');
-			  if (loginScreen) {
-				loginScreen.style.display = 'flex';
-				
-				// Mettre le focus sur le champ de saisie du pseudo
-				const usernameInput = document.getElementById('username-input');
-				if (usernameInput) {
-				  usernameInput.focus();
-				}
-			  }
-			  
-			  // Réinitialiser et afficher l'horloge de la partie
-			  showGameClock(data.gameInfo.endTime);
+			  // Délai court pour permettre au message de s'afficher dans la console
+			  setTimeout(() => {
+				window.location.reload();
+			  }, 100);
 			});
 
 			// Un nouveau joueur rejoint
@@ -3848,6 +3926,11 @@
 					console.log("Joueur touché trouvé:", otherPlayers[data.id].username);
 					// Un autre joueur est touché
 					otherPlayers[data.id].hp = data.hp;
+					
+					// Add null check for mesh and position
+					if (otherPlayers[data.id].mesh && otherPlayers[data.id].mesh.position) {
+						createDamageText(otherPlayers[data.id].mesh.position, data.damage);
+					}
 					createDamageText(otherPlayers[data.id].mesh.position, data.damage);
 					
 					// S'assurer que les couleurs originales sont stockées
@@ -3866,6 +3949,10 @@
 			// Un joueur est tué
 			socket.on('playerKilled', (data) => {
 				if (data.id === socket.id) {
+				    // Stocker le tueur
+					if (data.killerId && otherPlayers[data.killerId]) {
+						player.lastKiller = otherPlayers[data.killerId];
+					}
 					// Nous sommes morts (devrait déjà être géré localement)
 					if (player.isAlive) {
 						player.die();
@@ -4184,6 +4271,7 @@
 			nameTag.style.pointerEvents = 'none';
 			nameTag.style.textAlign = 'center';
 			nameTag.style.whiteSpace = 'nowrap';
+			nameTag.style.transform = 'translate(-50%, 0)'; // Centrage sans offsetWidth
 			nameTag.textContent = player.username || 'Joueur';
 			document.body.appendChild(nameTag);
 			
@@ -4201,7 +4289,27 @@
 			// Calculer la position 2D à partir de la position 3D
 			const vector = new THREE.Vector3();
 			vector.setFromMatrixPosition(player.mesh.matrixWorld);
-			vector.y += 2; // Positionner au-dessus du joueur
+			vector.y += 2 * player.baseScale; // Positionner au-dessus du joueur (échelle adaptative)
+			
+			// Vérifier si le joueur est dans le champ de vision de la caméra
+			const tempVector = vector.clone();
+			tempVector.project(camera);
+			
+			// Si le joueur est hors du champ de vision ou trop loin de la caméra
+			if (Math.abs(tempVector.x) > 1.1 || Math.abs(tempVector.y) > 1.1 || 
+				tempVector.z > 1.1 || calculateDistanceToCamera(player.mesh.position) > 100) {
+				player.nameTag.style.display = 'none';
+				return;
+			} else {
+				player.nameTag.style.display = 'block';
+			}
+			
+			// Tenir compte du mode de caméra actuel pour ajuster la position
+			if (cameraController && cameraController.mode === 'firstPerson' && player === cameraController.player) {
+				// Masquer le tag du joueur principal en mode première personne
+				player.nameTag.style.display = 'none';
+				return;
+			}
 			
 			vector.project(camera);
 			
@@ -4209,9 +4317,13 @@
 			const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
 			const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
 			
-			// Mettre à jour le style
-			player.nameTag.style.left = `${x - (player.nameTag.offsetWidth / 2)}px`;
-			player.nameTag.style.top = `${y - 30}px`; // Décalage vers le haut
+			// Adapter le décalage vertical à l'échelle du joueur
+			const verticalOffset = 30 * Math.max(1, player.baseScale);
+			
+			// Mettre à jour le style sans utiliser offsetWidth (problème 6)
+			player.nameTag.style.transform = `translate(-50%, 0)`;
+			player.nameTag.style.left = `${x}px`;
+			player.nameTag.style.top = `${y - verticalOffset}px`;
 			
 			// Ajouter une barre de vie
 			const hpPercent = (player.hp / player.maxHp) * 100;
@@ -4231,10 +4343,17 @@
 			`;
 		}
 
+		// Fonction pour calculer la distance à la caméra
+		function calculateDistanceToCamera(position) {
+			return camera.position.distanceTo(position);
+		}
+
 		// Fonction pour supprimer le tag de nom
 		function removePlayerNameTag(player) {
 			if (player.nameTag) {
-				document.body.removeChild(player.nameTag);
+				if (player.nameTag.parentNode) {
+					document.body.removeChild(player.nameTag);
+				}
 				player.nameTag = null;
 			}
 		}
@@ -4810,6 +4929,11 @@
 		window.addEventListener('beforeunload', cleanupGame);
 
 		function createDamageText(position, amount) {
+		    // Check if position is valid
+			if (!position) {
+				console.warn("Invalid position for damage text");
+				return;
+			}
 			// Convertir la position 3D en position 2D sur l'écran
 			const vector = position.clone();
 			vector.project(camera); // Projeter la position 3D sur l'écran 2D
@@ -4840,11 +4964,23 @@
 		}
 
         // Gestion du redimensionnement de la fenêtre
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+		window.addEventListener('resize', () => {
+			// Mise à jour de la caméra et du renderer (code existant)
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			
+			// Mise à jour des tags de tous les joueurs
+			if (player && player.nameTag) {
+				updatePlayerNameTag(player);
+			}
+			
+			for (const id in otherPlayers) {
+				if (otherPlayers[id] && otherPlayers[id].nameTag) {
+					updatePlayerNameTag(otherPlayers[id]);
+				}
+			}
+		});
 
         // Démarrer l'animation
         requestAnimationFrame(animate);
