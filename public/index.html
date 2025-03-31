@@ -2216,15 +2216,23 @@
 				// Orienter le canon vers l'avant
 				cannonGroup.rotation.y = 0;
 				
-				// Matériaux
-				const barrelMaterial = new THREE.MeshStandardMaterial({ 
-					color: 0x666666,
-					roughness: 0.4,
-					metalness: 0.8
-				});
-				
-				const baseMaterial = new THREE.MeshStandardMaterial({ 
-					color: 0x444444,
+				let barrelMaterial, baseMaterial;
+
+				// Si le canon principal existe, cloner ses matériaux
+				if (this.cannonBarrel && this.cannonBarrel.material) {
+					barrelMaterial = this.cannonBarrel.material.clone();
+				} else {
+					// Sinon, utiliser les couleurs par défaut
+					barrelMaterial = new THREE.MeshStandardMaterial({ 
+						color: 0x666666,
+						roughness: 0.4,
+						metalness: 0.8
+					});
+				}
+
+				// Utiliser un matériau similaire pour la base
+				baseMaterial = new THREE.MeshStandardMaterial({ 
+					color: barrelMaterial.color.clone(),
 					roughness: 0.6,
 					metalness: 0.6
 				});
