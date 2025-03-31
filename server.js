@@ -418,8 +418,8 @@ function spawnDroppedProcessors(playerId, position) {
   };
   
   Object.entries(processorCounts).forEach(([type, count]) => {
-    // Calculer combien de processeurs vont tomber (1/10 des processeurs)
-    const dropCount = Math.floor(count / 10);
+    // Calculer combien de processeurs vont tomber (1/2 des processeurs)
+    const dropCount = Math.floor(count / 2);
     
     if (dropCount <= 0) return;
     
