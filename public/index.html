@@ -4947,13 +4947,13 @@
 			const textElement = document.createElement('div');
 			textElement.className = 'floating-text';
 			
-			// Ajouter un décalage horizontal aléatoire pour éviter la superposition
-			const horizontalOffset = (Math.random() - 0.5) * 50;
+			// Ajouter un décalage vertical aléatoire pour éviter la superposition
+			const verticalOffset = (Math.random() - 0.5) * 50;
 			
 			textElement.textContent = `-${amount}HP`;
 			textElement.style.color = "#ff0000"; // Rouge pour les dégâts
-			textElement.style.left = (x + horizontalOffset) + 'px';
-			textElement.style.top = y + 'px';
+			textElement.style.left = x + 'px';
+			textElement.style.top = (y + verticalOffset) + 'px';
 			document.body.appendChild(textElement);
 			
 			// Démarrer l'animation
