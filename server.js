@@ -463,6 +463,11 @@ function spawnDroppedProcessors(playerId, position) {
   });
 }
 
+socket.on('requestProcessorsUpdate', () => {
+  // Envoyer la liste complète des processeurs actuels
+  socket.emit('processorsUpdate', gameState.processors);
+});
+
 // GESTION DES CONNEXIONS ET ÉVÉNEMENTS
 // -----------------------------------
 
