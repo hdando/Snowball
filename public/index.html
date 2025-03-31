@@ -4246,14 +4246,35 @@
 		// Fonction pour supprimer un autre joueur
 		function removeOtherPlayer(id) {
 			if (otherPlayers[id]) {
-				// Supprimer le tag de nom
-				removePlayerNameTag(otherPlayers[id]);
+				const player = otherPlayers[id];
 				
-				// Supprimer le joueur de la scène
-				scene.remove(otherPlayers[id].mesh);
+				// Supprimer le tag de nom
+				removePlayerNameTag(player);
+				
+				// Nettoyer tous les projectiles
+				if (player.projectiles && player.projectiles.length > 0) {
+					player.projectiles.forEach(p => {
+						if (p && p.destroy) p.destroy();
+					});
+					player.projectiles = [];
+				}
+				
+				// Supprimer du système de collision
+				if (player.collisionSystem) {
+					player.collisionSystem.removeObject(player);
+				}
+				
+				// Disposer proprement de toutes les ressources Three.js
+				if (player.mesh) {
+					disposeThreeObject(player.mesh);
+					scene.remove(player.mesh);
+					player.mesh = null;
+				}
 				
 				// Supprimer de la liste des joueurs
 				delete otherPlayers[id];
+				
+				console.log(`Joueur ${id} complètement supprimé de la scène`);
 			}
 		}
 
