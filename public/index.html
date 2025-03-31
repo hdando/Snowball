@@ -4814,58 +4814,80 @@
         let lastTime = 0;
         let processorSpawnEnabled = true; // Variable pour activer/désactiver l'apparition des processeurs
 
-        function animate(time) {
+		function animate(time) {
 			animationId = requestAnimationFrame(animate);
-            
-            // Convertir le temps en millisecondes et calculer le delta
-            const currentTime = time;
-            const deltaTime = (currentTime - lastTime) / 1000; // Convertir en secondes
-            
-            // Déplacer le joueur selon les touches pressées
-            player.move(keys);
-            
-			updatePlayerNameTag(player);
 			
-            // Gérer les attaques
-            player.doAttack(keys, currentTime);
-            
-            // Réparer automatiquement le robot
-            player.repair(deltaTime);
-            
-			// Mettre à jour les processeurs sur la carte (sans en créer de nouveaux)
-			for (let i = gameMap.processors.length - 1; i >= 0; i--) {
-				gameMap.processors[i].update();
-			}
-			// Mettre à jour seulement les canons existants (sans en créer de nouveaux)
-			for (let i = gameMap.cannons.length - 1; i >= 0; i--) {
-				gameMap.cannons[i].update();
-			}
+			// Convertir le temps en millisecondes et calculer le delta
+			const currentTime = time;
+			const deltaTime = (currentTime - lastTime) / 1000; // Convertir en secondes
 			
-			// Mettre à jour les autres joueurs
-			for (const id in otherPlayers) {
-				// Réparer automatiquement
-				otherPlayers[id].repair(deltaTime);
+			// Vérifier si le joueur existe et si le jeu a commencé
+			if (player && player.mesh && gameStarted) {
+				// Déplacer le joueur selon les touches pressées
+				player.move(keys);
 				
-				// Mettre à jour les projectiles
-				otherPlayers[id].updateProjectiles();
+				// Mettre à jour le tag du nom du joueur
+				updatePlayerNameTag(player);
 				
-				// Mettre à jour le tag de nom
-				updatePlayerNameTag(otherPlayers[id]);
+				// Gérer les attaques
+				player.doAttack(keys, currentTime);
+				
+				// Réparer automatiquement le robot
+				player.repair(deltaTime);
+				
+				// Mettre à jour les processeurs sur la carte (sans en créer de nouveaux)
+				for (let i = gameMap.processors.length - 1; i >= 0; i--) {
+					gameMap.processors[i].update();
+				}
+				
+				// Mettre à jour seulement les canons existants (sans en créer de nouveaux)
+				for (let i = gameMap.cannons.length - 1; i >= 0; i--) {
+					gameMap.cannons[i].update();
+				}
+				
+				// Mettre à jour les autres joueurs
+				for (const id in otherPlayers) {
+					// Réparer automatiquement
+					otherPlayers[id].repair(deltaTime);
+					
+					// Mettre à jour les projectiles
+					otherPlayers[id].updateProjectiles();
+					
+					// Mettre à jour le tag de nom
+					updatePlayerNameTag(otherPlayers[id]);
+				}
+				
+				// Mettre à jour périodiquement le tableau de score (1 fois par seconde)
+				if (Math.floor(time / 1000) !== Math.floor(lastTime / 1000)) {
+					updateScoreboard();
+				}
+				
+				// Mettre à jour la caméra pour suivre le joueur
+				if (cameraController) {
+					updateCamera();
+				}
+			} else {
+				// Si le joueur n'existe pas encore ou si le jeu n'a pas commencé,
+				// on peut quand même rendre la scène avec une caméra statique
+				camera.position.set(0, 30, 30);
+				camera.lookAt(0, 0, 0);
+				
+				// On peut toujours animer certains éléments de la scène pour une apparence plus vivante
+				// Par exemple, faire tourner les processeurs et les canons
+				for (let i = gameMap.processors.length - 1; i >= 0; i--) {
+					gameMap.processors[i].update();
+				}
+				
+				for (let i = gameMap.cannons.length - 1; i >= 0; i--) {
+					gameMap.cannons[i].update();
+				}
 			}
 			
-			// Mettre à jour périodiquement le tableau de score (1 fois par seconde)
-			if (Math.floor(time / 1000) !== Math.floor(lastTime / 1000)) {
-				updateScoreboard();
-			}
-            
-            // Mettre à jour la caméra pour suivre le joueur
-            updateCamera();
-            
-            // Rendu de la scène
-            renderer.render(scene, camera);
-            
-            lastTime = currentTime;
-        }
+			// Rendu de la scène
+			renderer.render(scene, camera);
+			
+			lastTime = currentTime;
+		}
 		
 		function cleanupGame() {
 			// Arrêter toutes les animations
