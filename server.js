@@ -951,14 +951,17 @@ io.on('connection', (socket) => {
     
     // Incrémenter le compteur de processeurs
     gameState.players[socket.id].stats.processorCounts[processorType]++;
+		
+	// Calculer le total des processeurs
+	const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts).reduce((sum, count) => sum + count, 0);
     
-    // Diffuser la mise à jour des statistiques
+	// Diffuser la mise à jour des statistiques
 	io.emit('playerStatsUpdated', {
 	id: socket.id,
 	stats: gameState.players[socket.id].stats,
 	hp: gameState.players[socket.id].hp,
 	maxHp: gameState.players[socket.id].maxHp,
-	totalProcessors: Object.values(gameState.players[socket.id].stats.processorCounts).reduce((a, b) => a + b, 0)
+	totalProcessors: totalProcessors
   });
 });
   
