@@ -196,6 +196,12 @@ function restartGame() {
   // Réinitialiser l'état du jeu
   resetGameState();
   
+  // Forcer tous les clients à rafraîchir leurs pages
+  io.emit('forceRefresh', {
+    reason: "game_restart",
+    timestamp: Date.now()
+  });
+  
   // Informer tous les joueurs du redémarrage
   io.emit('gameRestarted', {
     gameState: gameState,
@@ -239,28 +245,19 @@ function determineWinners() {
   
 // Réinitialiser l'état du jeu
 function resetGameState() {
-  // Sauvegarder les noms d'utilisateurs et IDs des joueurs actuellement connectés
-  const usernames = {};
-  Object.keys(gameState.players).forEach(playerId => {
-    if (gameState.players[playerId]) {
-      usernames[playerId] = gameState.players[playerId].username || `Robot-${playerId.substr(0, 4)}`;
-    }
-  });
-  
-  // Réinitialiser complètement tous les objets du jeu
+
+  // Réinitialiser l'état du jeu
+  const connectedPlayers = {};
   gameState.processors = {};
   gameState.cannons = {};
   gameState.projectiles = {};
+  
+  // Régénérer les structures
   gameState.structures = {};
-  
-  // Important : réinitialiser l'objet players
-  gameState.players = {};
-  
-  // Régénérer les structures statiques
   generateStaticStructures();
   
-  // Recréer les joueurs avec leurs statistiques par défaut
-  Object.keys(usernames).forEach(playerId => {
+  // Réinitialiser les joueurs avec leur position et stats par défaut
+  Object.keys(connectedPlayers).forEach(playerId => {
     gameState.players[playerId] = {
       id: playerId,
       position: generateRandomPosition(),
@@ -270,14 +267,9 @@ function resetGameState() {
       hp: 100,
       maxHp: 100,
       isAlive: true,
-      username: usernames[playerId]
+      username: connectedPlayers[playerId].username
     };
   });
-  
-  // Réinitialiser les compteurs d'IDs
-  processorId = 0;
-  cannonId = 0;
-  projectileId = 0;
   
   // Mise à jour de l'état de la partie actuelle
   currentGameState = {
@@ -287,6 +279,11 @@ function resetGameState() {
     winners: [],
     gameId: generateGameId()
   };
+  
+  // Réinitialiser les compteurs d'IDs
+  processorId = 0;
+  cannonId = 0;
+  projectileId = 0;
 }
 
 // Fonction utilitaire pour générer une position aléatoire sur la carte
