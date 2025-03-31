@@ -4005,6 +4005,31 @@
 					structure.die();
 				}
 			});
+			
+			// Rafraîchissement forcé au moment des relances du serveur
+			socket.on('forceRefresh', (data) => {
+			  console.log('Rafraîchissement forcé par le serveur:', data.reason);
+			  
+			  // Afficher un message bref à l'utilisateur
+			  const message = document.createElement('div');
+			  message.style.position = 'fixed';
+			  message.style.top = '50%';
+			  message.style.left = '50%';
+			  message.style.transform = 'translate(-50%, -50%)';
+			  message.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+			  message.style.color = 'white';
+			  message.style.padding = '20px';
+			  message.style.borderRadius = '5px';
+			  message.style.zIndex = '9999';
+			  message.textContent = 'Nouvelle partie! Rechargement...';
+			  document.body.appendChild(message);
+			  
+			  // Forcer le rafraîchissement après un court délai
+			  setTimeout(() => {
+				window.location.reload(true); // Le paramètre true force un rechargement depuis le serveur
+			  }, 500);
+			});
+		
 		}
 		
 		// Fonction pour nettoyer tous les objets du jeu
