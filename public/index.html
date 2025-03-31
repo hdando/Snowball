@@ -3794,8 +3794,8 @@
 				
 				// Traiter les joueurs existants
 				Object.entries(state.players).forEach(([id, playerData]) => {
-					if (id !== socket.id) {
-						createOtherPlayer(id, playerData);
+					if (id !== socket.id && !otherPlayers[id] && playerData.isAlive) {
+					createOtherPlayer(id, playerData);
 					}
 				});
 				
