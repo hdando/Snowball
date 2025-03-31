@@ -2750,126 +2750,6 @@
 
 			}
 			
-			// Ajouter cette fonction après la définition de la classe Player
-			function createDeathScreen(killer) {
-				// Si killer est undefined, utiliser un message par défaut
-				const killerName = killer ? killer.username : "un adversaire inconnu";
-				
-				// Créer l'élément principal de l'écran de mort
-				const deathScreen = document.createElement('div');
-				deathScreen.id = 'death-screen';
-				deathScreen.style.position = 'absolute';
-				deathScreen.style.top = '0';
-				deathScreen.style.left = '0';
-				deathScreen.style.width = '100%';
-				deathScreen.style.height = '100%';
-				deathScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
-				deathScreen.style.display = 'flex';
-				deathScreen.style.flexDirection = 'column';
-				deathScreen.style.justifyContent = 'center';
-				deathScreen.style.alignItems = 'center';
-				deathScreen.style.zIndex = '2000';
-				deathScreen.style.fontFamily = 'Arial, sans-serif';
-				deathScreen.style.color = 'white';
-				
-				// Ajouter le message principal
-				const messageElement = document.createElement('h1');
-				messageElement.textContent = `Vous avez été tué par ${killerName}`;
-				messageElement.style.fontSize = '36px';
-				messageElement.style.marginBottom = '30px';
-				messageElement.style.textAlign = 'center';
-				messageElement.style.color = '#ff3333';
-				messageElement.style.textShadow = '0 0 10px #ff0000';
-				deathScreen.appendChild(messageElement);
-				
-				// Conteneur pour les statistiques et le bouton
-				const contentContainer = document.createElement('div');
-				contentContainer.style.display = 'flex';
-				contentContainer.style.width = '80%';
-				contentContainer.style.maxWidth = '900px';
-				contentContainer.style.justifyContent = 'space-between';
-				contentContainer.style.alignItems = 'center';
-				deathScreen.appendChild(contentContainer);
-				
-				// Créer le bouton de rejouer
-				const replayButton = document.createElement('button');
-				replayButton.textContent = 'REJOUER';
-				replayButton.style.fontSize = '24px';
-				replayButton.style.padding = '15px 40px';
-				replayButton.style.backgroundColor = '#4CAF50';
-				replayButton.style.color = 'white';
-				replayButton.style.border = 'none';
-				replayButton.style.borderRadius = '5px';
-				replayButton.style.cursor = 'pointer';
-				replayButton.style.margin = '0 auto';
-				replayButton.style.transition = 'background-color 0.3s';
-				
-				// Effet de survol
-				replayButton.addEventListener('mouseover', () => {
-					replayButton.style.backgroundColor = '#45a049';
-				});
-				replayButton.addEventListener('mouseout', () => {
-					replayButton.style.backgroundColor = '#4CAF50';
-				});
-				
-				// Action du bouton: rafraîchir la page
-				replayButton.addEventListener('click', () => {
-					window.location.reload();
-				});
-				
-				contentContainer.appendChild(replayButton);
-				
-				// Ajouter les statistiques du tueur si elles sont disponibles
-				if (killer) {
-					const statsContainer = document.createElement('div');
-					statsContainer.style.backgroundColor = 'rgba(50, 50, 50, 0.7)';
-					statsContainer.style.padding = '20px';
-					statsContainer.style.borderRadius = '10px';
-					statsContainer.style.minWidth = '250px';
-					
-					const statsTitle = document.createElement('h3');
-					statsTitle.textContent = `Statistiques de ${killer.username}`;
-					statsTitle.style.marginTop = '0';
-					statsTitle.style.marginBottom = '15px';
-					statsTitle.style.textAlign = 'center';
-					statsContainer.appendChild(statsTitle);
-					
-					// Formatter et ajouter chaque statistique
-					const stats = [
-						{ name: 'HP', value: Math.floor(killer.hp) + '/' + Math.floor(killer.maxHp) },
-						{ name: 'Défense', value: Math.floor(killer.resistance) },
-						{ name: 'Attaque', value: Math.floor(killer.attack) },
-						{ name: 'Cadence', value: killer.attackSpeed.toFixed(2) },
-						{ name: 'Portée', value: Math.floor(killer.range) },
-						{ name: 'Vitesse', value: killer.speed.toFixed(3) },
-						{ name: 'Processeurs', value: killer.totalProcessors || 0 }
-					];
-					
-					stats.forEach(stat => {
-						const statRow = document.createElement('div');
-						statRow.style.display = 'flex';
-						statRow.style.justifyContent = 'space-between';
-						statRow.style.marginBottom = '8px';
-						
-						const statName = document.createElement('span');
-						statName.textContent = stat.name + ':';
-						statRow.appendChild(statName);
-						
-						const statValue = document.createElement('span');
-						statValue.textContent = stat.value;
-						statValue.style.fontWeight = 'bold';
-						statRow.appendChild(statValue);
-						
-						statsContainer.appendChild(statRow);
-					});
-					
-					contentContainer.appendChild(statsContainer);
-				}
-				
-				// Ajouter l'écran à la page
-				document.body.appendChild(deathScreen);
-			}
-			
 			// Effet visuel lors de la destruction du robot
 			showDestructionEffect() {
 				// Masquer visuellement le robot (vous pourriez ajouter une animation plus complexe)
@@ -3579,6 +3459,126 @@
 				}
 			}
 		}    
+		
+		// Ajouter cette fonction après la définition de la classe Player
+		function createDeathScreen(killer) {
+			// Si killer est undefined, utiliser un message par défaut
+			const killerName = killer ? killer.username : "un adversaire inconnu";
+			
+			// Créer l'élément principal de l'écran de mort
+			const deathScreen = document.createElement('div');
+			deathScreen.id = 'death-screen';
+			deathScreen.style.position = 'absolute';
+			deathScreen.style.top = '0';
+			deathScreen.style.left = '0';
+			deathScreen.style.width = '100%';
+			deathScreen.style.height = '100%';
+			deathScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+			deathScreen.style.display = 'flex';
+			deathScreen.style.flexDirection = 'column';
+			deathScreen.style.justifyContent = 'center';
+			deathScreen.style.alignItems = 'center';
+			deathScreen.style.zIndex = '2000';
+			deathScreen.style.fontFamily = 'Arial, sans-serif';
+			deathScreen.style.color = 'white';
+			
+			// Ajouter le message principal
+			const messageElement = document.createElement('h1');
+			messageElement.textContent = `Vous avez été tué par ${killerName}`;
+			messageElement.style.fontSize = '36px';
+			messageElement.style.marginBottom = '30px';
+			messageElement.style.textAlign = 'center';
+			messageElement.style.color = '#ff3333';
+			messageElement.style.textShadow = '0 0 10px #ff0000';
+			deathScreen.appendChild(messageElement);
+			
+			// Conteneur pour les statistiques et le bouton
+			const contentContainer = document.createElement('div');
+			contentContainer.style.display = 'flex';
+			contentContainer.style.width = '80%';
+			contentContainer.style.maxWidth = '900px';
+			contentContainer.style.justifyContent = 'space-between';
+			contentContainer.style.alignItems = 'center';
+			deathScreen.appendChild(contentContainer);
+			
+			// Créer le bouton de rejouer
+			const replayButton = document.createElement('button');
+			replayButton.textContent = 'REJOUER';
+			replayButton.style.fontSize = '24px';
+			replayButton.style.padding = '15px 40px';
+			replayButton.style.backgroundColor = '#4CAF50';
+			replayButton.style.color = 'white';
+			replayButton.style.border = 'none';
+			replayButton.style.borderRadius = '5px';
+			replayButton.style.cursor = 'pointer';
+			replayButton.style.margin = '0 auto';
+			replayButton.style.transition = 'background-color 0.3s';
+			
+			// Effet de survol
+			replayButton.addEventListener('mouseover', () => {
+				replayButton.style.backgroundColor = '#45a049';
+			});
+			replayButton.addEventListener('mouseout', () => {
+				replayButton.style.backgroundColor = '#4CAF50';
+			});
+			
+			// Action du bouton: rafraîchir la page
+			replayButton.addEventListener('click', () => {
+				window.location.reload();
+			});
+			
+			contentContainer.appendChild(replayButton);
+			
+			// Ajouter les statistiques du tueur si elles sont disponibles
+			if (killer) {
+				const statsContainer = document.createElement('div');
+				statsContainer.style.backgroundColor = 'rgba(50, 50, 50, 0.7)';
+				statsContainer.style.padding = '20px';
+				statsContainer.style.borderRadius = '10px';
+				statsContainer.style.minWidth = '250px';
+				
+				const statsTitle = document.createElement('h3');
+				statsTitle.textContent = `Statistiques de ${killer.username}`;
+				statsTitle.style.marginTop = '0';
+				statsTitle.style.marginBottom = '15px';
+				statsTitle.style.textAlign = 'center';
+				statsContainer.appendChild(statsTitle);
+				
+				// Formatter et ajouter chaque statistique
+				const stats = [
+					{ name: 'HP', value: Math.floor(killer.hp) + '/' + Math.floor(killer.maxHp) },
+					{ name: 'Défense', value: Math.floor(killer.resistance) },
+					{ name: 'Attaque', value: Math.floor(killer.attack) },
+					{ name: 'Cadence', value: killer.attackSpeed.toFixed(2) },
+					{ name: 'Portée', value: Math.floor(killer.range) },
+					{ name: 'Vitesse', value: killer.speed.toFixed(3) },
+					{ name: 'Processeurs', value: killer.totalProcessors || 0 }
+				];
+				
+				stats.forEach(stat => {
+					const statRow = document.createElement('div');
+					statRow.style.display = 'flex';
+					statRow.style.justifyContent = 'space-between';
+					statRow.style.marginBottom = '8px';
+					
+					const statName = document.createElement('span');
+					statName.textContent = stat.name + ':';
+					statRow.appendChild(statName);
+					
+					const statValue = document.createElement('span');
+					statValue.textContent = stat.value;
+					statValue.style.fontWeight = 'bold';
+					statRow.appendChild(statValue);
+					
+					statsContainer.appendChild(statRow);
+				});
+				
+				contentContainer.appendChild(statsContainer);
+			}
+			
+			// Ajouter l'écran à la page
+			document.body.appendChild(deathScreen);
+		}
 		
 		function createServerStructure(structureData) {
 			// Créer les structures en fonction de leur type
