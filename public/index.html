@@ -2216,23 +2216,15 @@
 				// Orienter le canon vers l'avant
 				cannonGroup.rotation.y = 0;
 				
-				let barrelMaterial, baseMaterial;
-
-				// Si le canon principal existe, cloner ses matériaux
-				if (this.cannonBarrel && this.cannonBarrel.material) {
-					barrelMaterial = this.cannonBarrel.material.clone();
-				} else {
-					// Sinon, utiliser les couleurs par défaut
-					barrelMaterial = new THREE.MeshStandardMaterial({ 
-						color: 0x666666,
-						roughness: 0.4,
-						metalness: 0.8
-					});
-				}
-
-				// Utiliser un matériau similaire pour la base
-				baseMaterial = new THREE.MeshStandardMaterial({ 
-					color: barrelMaterial.color.clone(),
+				// Matériaux
+				const barrelMaterial = new THREE.MeshStandardMaterial({ 
+					color: 0x666666,
+					roughness: 0.4,
+					metalness: 0.8
+				});
+				
+				const baseMaterial = new THREE.MeshStandardMaterial({ 
+					color: 0x444444,
 					roughness: 0.6,
 					metalness: 0.6
 				});
@@ -2262,6 +2254,12 @@
 				
 				// Ajouter aux parties du corps pour les effets de dégâts
 				this.bodyParts.push(base, barrel);
+				
+				// Si les couleurs originales ont déjà été stockées, ajouter aussi les couleurs des nouveaux canons
+				if (this.originalBodyColors) {
+					this.originalBodyColors.push(base.material.color.clone());
+					this.originalBodyColors.push(barrel.material.color.clone());
+				}
 				
 				// Créer un texte flottant pour indiquer l'ajout du canon
 				this.createFloatingText(this.mesh.position, "CANON+", "#ffffff");
