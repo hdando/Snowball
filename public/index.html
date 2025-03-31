@@ -3931,20 +3931,43 @@
 			
 			// Un joueur est tué
 			socket.on('playerKilled', (data) => {
-				if (data.id === socket.id) {
-				    // Stocker le tueur
-					if (data.killerId && otherPlayers[data.killerId]) {
-						player.lastKiller = otherPlayers[data.killerId];
-					}
-					// Nous sommes morts (devrait déjà être géré localement)
-					if (player.isAlive) {
-						player.die();
-					}
-				} else if (otherPlayers[data.id]) {
-					// Un autre joueur est mort
-					otherPlayers[data.id].die();
+			  if (data.id === socket.id) {
+				// Stocker le tueur
+				if (data.killerId && otherPlayers[data.killerId]) {
+				  player.lastKiller = otherPlayers[data.killerId];
 				}
-				updateScoreboard();
+				// Nous sommes morts (devrait déjà être géré localement)
+				if (player.isAlive) {
+				  player.die();
+				}
+			  } else if (otherPlayers[data.id]) {
+				// Un autre joueur est mort
+				otherPlayers[data.id].die();
+			  }
+			  // Mise à jour du tableau des scores immédiatement après une élimination
+			  updateScoreboard();
+			  
+			  // Demander au serveur une mise à jour des processeurs
+			  // Cela garantit que tous les processeurs largués sont synchronisés
+			  socket.emit('requestProcessorsUpdate');
+			});
+			
+			// Mise à jour des processeurs existants
+			socket.on('processorsUpdate', (processors) => {
+			  // Supprimer les processeurs existants qui ne sont plus dans la liste du serveur
+			  gameMap.processors.forEach(processor => {
+				if (!processors[processor.id]) {
+				  processor.destroy();
+				  gameMap.removeProcessor(processor);
+				}
+			  });
+			  
+			  // Ajouter les nouveaux processeurs
+			  Object.values(processors).forEach(processorData => {
+				if (!gameMap.processors.some(p => p.id === processorData.id)) {
+				  createServerProcessor(processorData);
+				}
+			  });
 			});
 			
 			// Un joueur quitte
@@ -3977,14 +4000,19 @@
 			
 			// Mise à jour des statistiques d'un joueur
 			socket.on('playerStatsUpdated', (data) => {
-				if (data.id === socket.id) {
-					// Synchroniser nos statistiques si nécessaire
-					// Généralement elles seront déjà à jour localement
-				} else if (otherPlayers[data.id]) {
-					// Mettre à jour les statistiques d'un autre joueur
-					updateOtherPlayerStats(data.id, data);
+			  if (data.id === socket.id) {
+				// Synchroniser nos statistiques si nécessaire
+				// Inclure totalProcessors qui est important pour le leaderboard
+				if (data.totalProcessors) {
+				  player.totalProcessors = data.totalProcessors;
 				}
-				updateScoreboard();
+				player.updateUI();
+			  } else if (otherPlayers[data.id]) {
+				// Mettre à jour les statistiques d'un autre joueur
+				updateOtherPlayerStats(data.id, data);
+			  }
+			  // Mettre à jour le tableau des scores après chaque mise à jour de statistiques
+			  updateScoreboard();
 			});
 			
 			// Ajouter des gestionnaires pour les dégâts aux structures
