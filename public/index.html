@@ -4625,7 +4625,7 @@
 			const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 			
 			// Ajouter une classe d'alerte si moins de 5 minutes
-			const isWarning = timeLeft < 2 * 60 * 1000;
+			const isWarning = timeLeft < 1 * 60 * 1000;
 			
 			gameClock.innerHTML = `
 			  <div class='game-info ${isWarning ? "time-warning" : ""}'>
@@ -4639,6 +4639,7 @@
 		  
 		  updateClock();
 		}
+
 		// Afficher un message de redémarrage
 		function showRestartingMessage() {
 			const notification = document.createElement('div');
@@ -4945,9 +4946,13 @@
 			// Créer l'élément de texte
 			const textElement = document.createElement('div');
 			textElement.className = 'floating-text';
+			
+			// Ajouter un décalage horizontal aléatoire pour éviter la superposition
+			const horizontalOffset = (Math.random() - 0.5) * 50;
+			
 			textElement.textContent = `-${amount}HP`;
 			textElement.style.color = "#ff0000"; // Rouge pour les dégâts
-			textElement.style.left = x + 'px';
+			textElement.style.left = (x + horizontalOffset) + 'px';
 			textElement.style.top = y + 'px';
 			document.body.appendChild(textElement);
 			
