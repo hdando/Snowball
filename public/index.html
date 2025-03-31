@@ -3562,7 +3562,7 @@
 		let player = null; // Initialiser à null
 
         // Initialisation du contrôleur de caméra
-        let cameraController = new CameraController(player);
+        let cameraController = null;
 
         // Positionnement et configuration de la caméra
         camera.position.set(0, 30, 30); // Position la caméra en hauteur et en retrait
@@ -3654,10 +3654,16 @@
 		}
        
 	   // Fonction pour mettre à jour la caméra
-        function updateCamera() {
-            // Utiliser le contrôleur de caméra pour mettre à jour la position
-            cameraController.updateCamera(camera);
-        }
+		function updateCamera() {
+			// Only update camera if player exists
+			if (player && player.mesh) {
+				cameraController.updateCamera(camera);
+			} else {
+				// Default camera position when no player exists
+				camera.position.set(0, 30, 30);
+				camera.lookAt(0, 0, 0); // Look at the center of the map
+			}
+		}
 
         // Stockage des autres joueurs
 		const otherPlayers = {};
