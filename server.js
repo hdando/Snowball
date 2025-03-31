@@ -239,19 +239,28 @@ function determineWinners() {
   
 // Réinitialiser l'état du jeu
 function resetGameState() {
-
-  // Réinitialiser l'état du jeu
-  const connectedPlayers = {};
+  // Sauvegarder les noms d'utilisateurs et IDs des joueurs actuellement connectés
+  const usernames = {};
+  Object.keys(gameState.players).forEach(playerId => {
+    if (gameState.players[playerId]) {
+      usernames[playerId] = gameState.players[playerId].username || `Robot-${playerId.substr(0, 4)}`;
+    }
+  });
+  
+  // Réinitialiser complètement tous les objets du jeu
   gameState.processors = {};
   gameState.cannons = {};
   gameState.projectiles = {};
-  
-  // Régénérer les structures
   gameState.structures = {};
+  
+  // Important : réinitialiser l'objet players
+  gameState.players = {};
+  
+  // Régénérer les structures statiques
   generateStaticStructures();
   
-  // Réinitialiser les joueurs avec leur position et stats par défaut
-  Object.keys(connectedPlayers).forEach(playerId => {
+  // Recréer les joueurs avec leurs statistiques par défaut
+  Object.keys(usernames).forEach(playerId => {
     gameState.players[playerId] = {
       id: playerId,
       position: generateRandomPosition(),
@@ -261,9 +270,14 @@ function resetGameState() {
       hp: 100,
       maxHp: 100,
       isAlive: true,
-      username: connectedPlayers[playerId].username
+      username: usernames[playerId]
     };
   });
+  
+  // Réinitialiser les compteurs d'IDs
+  processorId = 0;
+  cannonId = 0;
+  projectileId = 0;
   
   // Mise à jour de l'état de la partie actuelle
   currentGameState = {
@@ -273,11 +287,6 @@ function resetGameState() {
     winners: [],
     gameId: generateGameId()
   };
-  
-  // Réinitialiser les compteurs d'IDs
-  processorId = 0;
-  cannonId = 0;
-  projectileId = 0;
 }
 
 // Fonction utilitaire pour générer une position aléatoire sur la carte
