@@ -2690,22 +2690,6 @@
 				// Marquer le robot comme mort
 				console.log("Le robot est détruit! Libération des processeurs...");
 				
-				// Créer un objet pour suivre combien de processeurs de chaque type vont tomber
-				const droppedProcessors = {};
-				
-				// Pour chaque type de processeur, faire tomber 1/2 des processeurs
-				Object.entries(this.processorCounts).forEach(([type, count]) => {
-					// Calculer combien de processeurs vont tomber (arrondi à l'entier)
-					const dropCount = Math.floor(count / 2);
-					
-					if (dropCount > 0) {
-						droppedProcessors[type] = dropCount;
-					}
-				});
-				
-				// Faire apparaître les processeurs autour de la position du robot
-				this.gameMap.spawnProcessorsAtLocation(this.mesh.position, droppedProcessors);
-				
 				// Effet visuel de destruction
 				this.showDestructionEffect();
 				
