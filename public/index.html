@@ -1473,15 +1473,17 @@
 		// Classe pour la carte de jeu
         class GameMap {
             constructor(scene, collisionSystem) {
-                this.width = 100;  // Largeur de la carte
-                this.height = 100; // Hauteur de la carte
+                this.width = 400;  // Largeur de la carte
+                this.height = 400; // Hauteur de la carte
                 this.collisionSystem = collisionSystem;
                 this.scene = scene;
                 this.structures = [];
 				this.trees=[];
-				
-                // Créer un sol
-                const floorGeometry = new THREE.PlaneGeometry(this.width, this.height);
+
+				// Créer un sol circulaire
+				const floorRadius = this.width / 2; // Rayon = moitié de la largeur
+				const floorSegments = 64; // Nombre de segments pour le cercle
+				const floorGeometry = new THREE.CircleGeometry(floorRadius, floorSegments);
                 const floorMaterial = new THREE.MeshStandardMaterial({ 
                     color: 0x4b6043,
                     side: THREE.DoubleSide,
@@ -1501,13 +1503,6 @@
                 
                 // Créer les bordures
                 this.createBorders(scene);
-                
-				//Créer les structures
-				//this.createStructures();
-				
-                // Grille pour aider à visualiser l'espace
-                const gridHelper = new THREE.GridHelper(Math.max(this.width, this.height), Math.max(this.width, this.height) / 5);
-                scene.add(gridHelper);
                 
                 // Gestion des processeurs
                 this.processors = [];
@@ -1544,73 +1539,52 @@
             
             // Créer des bordures visuelles autour de la carte
             createBorders(scene) {
-                const borderMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0xff0000,
-                    roughness: 0.7
-                });
+				const borderMaterial = new THREE.MeshStandardMaterial({ 
+									color: 0xd2b48c, // Couleur beige-ocre
+									roughness: 0.9,  // Plus rugueux pour ressembler à la pierre ancienne
+									metalness: 0.1   // Faible métallicité pour la pierre
+								});
                 
                 // Hauteur des murs
                 const wallHeight = 5;
                 
-                // Bordure Nord
-                const northGeometry = new THREE.BoxGeometry(this.width, wallHeight, 1);
-                this.northBorder = new THREE.Mesh(northGeometry, borderMaterial);
-                this.northBorder.position.set(0, wallHeight/2, -this.height/2);
-                this.northBorder.userData.type = 'wall';
-                scene.add(this.northBorder);
+				// Créer une bordure circulaire
+				const radius = this.width / 2; // Rayon du cercle = moitié de la largeur
+				const segments = 64; // Nombre de segments pour créer le cercle
+				const wallThickness = 1;
+				
+				// Créer une géométrie tubulaire pour la bordure circulaire
+				const circleShape = new THREE.Shape();
+				circleShape.absarc(0, 0, radius, 0, Math.PI * 2, false);
+				
+				// Créer un trou à l'intérieur pour rendre la bordure creuse
+				const holeShape = new THREE.Shape();
+				holeShape.absarc(0, 0, radius - wallThickness, 0, Math.PI * 2, true);
+				circleShape.holes.push(holeShape);
+				
+				// Extrusion de la forme pour créer une bordure 3D
+				const extrudeSettings = {
+					steps: 1,
+					depth: wallHeight,
+					bevelEnabled: false
+				};
+				
+				const borderGeometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
+				this.circleBorder = new THREE.Mesh(borderGeometry, borderMaterial);
+				this.circleBorder.position.y = 5;
+				this.circleBorder.rotation.x = Math.PI / 2; // Rotation pour que le cercle soit horizontal
+				this.circleBorder.userData.type = 'wall';
+				scene.add(this.circleBorder);
+				
+				// Ajouter au système de collision
+				this.circleBorderObj = {
+					collider: this.circleBorder,
+					hasCollision: true,
+					userData: { type: 'wall' }
+				};
+				this.collisionSystem.addObject(this.circleBorderObj);
                 
-                // Ajouter au système de collision
-                this.northBorderObj = {
-                    collider: this.northBorder,
-                    hasCollision: true,
-                    userData: { type: 'wall' }
-                };
-                this.collisionSystem.addObject(this.northBorderObj);
-                
-                // Bordure Sud
-                const southGeometry = new THREE.BoxGeometry(this.width, wallHeight, 1);
-                this.southBorder = new THREE.Mesh(southGeometry, borderMaterial);
-                this.southBorder.position.set(0, wallHeight/2, this.height/2);
-                this.southBorder.userData.type = 'wall';
-                scene.add(this.southBorder);
-                
-                // Ajouter au système de collision
-                this.southBorderObj = {
-                    collider: this.southBorder,
-                    hasCollision: true,
-                    userData: { type: 'wall' }
-                };
-                this.collisionSystem.addObject(this.southBorderObj);
-                
-                // Bordure Est
-                const eastGeometry = new THREE.BoxGeometry(1, wallHeight, this.height);
-                this.eastBorder = new THREE.Mesh(eastGeometry, borderMaterial);
-                this.eastBorder.position.set(this.width/2, wallHeight/2, 0);
-                this.eastBorder.userData.type = 'wall';
-                scene.add(this.eastBorder);
-                
-                // Ajouter au système de collision
-                this.eastBorderObj = {
-                    collider: this.eastBorder,
-                    hasCollision: true,
-                    userData: { type: 'wall' }
-                };
-                this.collisionSystem.addObject(this.eastBorderObj);
-                
-                // Bordure Ouest
-                const westGeometry = new THREE.BoxGeometry(1, wallHeight, this.height);
-                this.westBorder = new THREE.Mesh(westGeometry, borderMaterial);
-                this.westBorder.position.set(-this.width/2, wallHeight/2, 0);
-                this.westBorder.userData.type = 'wall';
-                scene.add(this.westBorder);
-                
-                // Ajouter au système de collision
-                this.westBorderObj = {
-                    collider: this.westBorder,
-                    hasCollision: true,
-                    userData: { type: 'wall' }
-                };
-                this.collisionSystem.addObject(this.westBorderObj);
+
             }
             
 			
@@ -1886,12 +1860,17 @@
 			
 			// Définir une position aléatoire sur la carte
 			setRandomPosition() {
-				const halfWidth = this.gameMap.width / 2 - 2;  // -2 pour éviter de coller aux bords
-				const halfHeight = this.gameMap.height / 2 - 2;
-				
-				this.mesh.position.x = Math.random() * halfWidth * 2 - halfWidth;
-				this.mesh.position.y = 0.01;  //légèrement au-dessus du sol
-				this.mesh.position.z = Math.random() * halfHeight * 2 - halfHeight;
+			  const mapRadius = this.gameMap.width / 2; // Rayon de la carte
+			  const minRadius = mapRadius * 0.90; // 90% du rayon
+			  const maxRadius = mapRadius * 0.95; // 95% du rayon
+			  
+			  // Générer une position aléatoire dans une zone annulaire
+			  const angle = Math.random() * Math.PI * 2; // Angle aléatoire
+			  const radius = minRadius + Math.random() * (maxRadius - minRadius);
+			  
+			  this.mesh.position.x = Math.cos(angle) * radius;
+			  this.mesh.position.y = 0.01; // Légèrement au-dessus du sol
+			  this.mesh.position.z = Math.sin(angle) * radius;
 			}
 
 			// Méthode pour déplacer le robot
@@ -4620,8 +4599,8 @@
 			}
 			
 			// Formater le temps restant
-			const minutes = Math.floor(timeLeft / 60000);
-			const seconds = Math.floor((timeLeft % 60000) / 1000);
+			const minutes = Math.floor((timeLeft-35)/ 60000);
+			const seconds = Math.floor(((timeLeft -35)% 60000) / 1000);
 			const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 			
 			// Ajouter une classe d'alerte si moins de 5 minutes
