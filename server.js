@@ -23,7 +23,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Limites de la carte pour validation
 const MAP_BOUNDS = {
-  radius: 200,  // Rayon du cercle
+  radius: 100,  // Rayon du cercle
   minY: 0, maxY: 10
 };
 
