@@ -179,9 +179,9 @@
 	<div id="login-screen" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); display: flex; justify-content: center; align-items: center; z-index: 1000;">
 		<div style="background-color: #333; padding: 20px; border-radius: 10px; text-align: center; max-width: 400px;">
 			<h2 style="color: white; margin-bottom: 20px;">Robot Warfare</h2>
-			<p style="color: white; margin-bottom: 20px;">Entrez un nom d'utilisateur pour rejoindre la bataille!</p>
-			<input type="text" id="username-input" placeholder="Votre nom" style="padding: 8px; width: 80%; margin-bottom: 15px; border-radius: 5px; border: none;">
-			<button id="join-button" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer;">Rejoindre</button>
+			<p style="color: white; margin-bottom: 20px;">Enter a username to join the battle!</p>
+			<input type="text" id="username-input" placeholder="Your name" style="padding: 8px; width: 80%; margin-bottom: 15px; border-radius: 5px; border: none;">
+			<button id="join-button" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer;">Join</button>
 		</div>
 	</div>
     <div id="info">
@@ -190,39 +190,39 @@
             <span id="hp" class="stat-value">100</span><span class="stat-value">/</span><span id="maxhp" class="stat-value">100</span>
         </div>
         <div class="stat">
-            <span>Défense:</span>
+            <span>Defense:</span>
             <span id="def" class="stat-value">10</span>
         </div>
         <div class="stat">
-            <span>Attaque:</span>
+            <span>Attack:</span>
             <span id="atk" class="stat-value">10</span>
         </div>
         <div class="stat">
-            <span>Cadence de tir:</span>
+            <span>Attack Speed:</span>
             <span id="atkspeed" class="stat-value">0.5</span>
         </div>
         <div class="stat">
-            <span>Portée:</span>
+            <span>Range:</span>
             <span id="range" class="stat-value">10</span>
         </div>
         <div class="stat">
-            <span>Vitesse:</span>
+            <span>Speed:</span>
             <span id="speed" class="stat-value">0.02</span>
         </div>
         <div class="stat">
-            <span>Réparation:</span>
+            <span>Repair Speed:</span>
             <span id="repair" class="stat-value">0.1</span>
         </div>
 		<div class="stat">
-			<span>Processeurs:</span>
+			<span>Processors:</span>
 			<span id="processors" class="stat-value">0</span>
 		</div>
         <div class="controls">
-            ← → : rotation | ↑ ↓ : avancer/reculer | Ctrl gauche: attaque
+            ← → : rotate | ↑ ↓ : move forward/backward | Left Ctrl: attack
         </div>
     </div>
 	<div id="scoreboard" style="position: absolute; top: 10px; right: 10px; color: white; font-family: Arial, sans-serif; background-color: rgba(0, 0, 0, 0.7); padding: 10px; border-radius: 5px; max-height: 300px; overflow-y: auto; width: 250px;">
-		<h3 style="margin: 0 0 10px 0; text-align: center;">Joueurs</h3>
+		<h3 style="margin: 0 0 10px 0; text-align: center;">Players</h3>
 		<div id="players-list"></div>
 	</div>
     <script type="module">
@@ -430,9 +430,9 @@
 			// Obtenir une description du mode
 			getCameraModeDescription() {
 				switch (this.mode) {
-					case 'thirdPerson': return "Vue troisième personne";
-					case 'firstPerson': return "Vue première personne";
-					case 'topDown': return "Vue de dessus";
+					case 'thirdPerson': return "Third-person view";
+					case 'firstPerson': return "First-person view";
+					case 'topDown': return "Top-down view";
 					default: return "Mode inconnu";
 				}
 			}
@@ -592,13 +592,13 @@
 				const cameraHelp = document.getElementById('camera-help');
 				if (!cameraHelp) return;
 				
-				let helpContent = `<strong>Contrôles de caméra</strong><br>`;
-				helpContent += `Mode actuel: <strong>${this.getCameraModeDescription()}</strong><br><br>`;
+				let helpContent = `<strong>Camera Controls</strong><br>`;
+				helpContent += `Current Mode: <strong>${this.getCameraModeDescription()}</strong><br><br>`;
 				helpContent += `<strong>Souris:</strong><br>`;
-				helpContent += `Clic droit : Rotation de caméra<br>`;
-				helpContent += `Molette: Zoom avant/arrière<br><br>`;
+				helpContent += `Right click: Camera rotation<br>`;
+				helpContent += `Scroll: Zoom in/out<br><br>`;
 				helpContent += `<strong>Clavier:</strong><br>`;
-				helpContent += `<strong>C</strong>: Changer de mode caméra<br>`;
+				helpContent += `<strong>C</strong>: Change camera mode<br>`;
 				
 				cameraHelp.innerHTML = helpContent;
 			}
@@ -3713,7 +3713,7 @@
                 showPodium(data.winners);
                 
                 // Démarrer le compte à rebours pour le redémarrage
-                startCountdown(data.duration / 1000, 'Redémarrage dans');
+                startCountdown(data.duration / 1000, 'Restarting in');
             });
 
             socket.on('gameRestarting', (data) => {
@@ -4471,7 +4471,7 @@
 			// Titre
 			const title = document.createElement('h1');
 			title.className = 'podium-title';
-			title.textContent = "🏆 Fin de partie - Podium 🏆";
+			title.textContent = "🏆 Game over- Podium 🏆";
 			podiumScreen.appendChild(title);
 			
 			// Conteneur du podium
@@ -4609,7 +4609,7 @@
 			
 			gameClock.innerHTML = `
 			  <div class='game-info ${isWarning ? "time-warning" : ""}'>
-				⏱️ Temps restant: ${timeString}
+				⏱️ Time remaining: ${timeString}
 			  </div>
 			`;
 			
@@ -4637,7 +4637,7 @@
 			notification.style.boxShadow = '0 0 30px rgba(255, 0, 0, 0.7)';
 			notification.style.textAlign = 'center';
 			notification.style.animation = 'pulse 0.5s infinite alternate';
-			notification.innerHTML = '⚠️ REDÉMARRAGE DU SERVEUR<br>Préparation de la nouvelle partie...';
+			notification.innerHTML = '⚠️ SERVER RESTART<br>Preparing new game....';
 			
 			// Ajouter l'animation
 			const style = document.createElement('style');
