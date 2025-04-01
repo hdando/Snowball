@@ -4970,6 +4970,219 @@
         // Démarrer l'animation
         requestAnimationFrame(animate);
     </script>
+	
+<!-- Contrôles mobiles -->
+<div id="mobile-controls" style="display: none;">
+    <!-- Bouton de tir (en bas à gauche) -->
+    <div id="fire-button" class="mobile-button">
+        <svg viewBox="0 0 24 24" width="100%" height="100%">
+            <circle cx="12" cy="12" r="10" fill="#ff4444" stroke="#ffffff" stroke-width="2"/>
+            <text x="12" y="14" text-anchor="middle" fill="white" font-size="8" font-weight="bold">FEU</text>
+        </svg>
+    </div>
+    
+    <!-- Contrôles directionnels (en bas à droite) -->
+    <div id="direction-controls">
+        <div id="up-button" class="direction-button">
+            <svg viewBox="0 0 24 24" width="100%" height="100%">
+                <polygon points="12,4 4,20 20,20" fill="#5577ee" stroke="#ffffff" stroke-width="2"/>
+            </svg>
+        </div>
+        <div class="direction-row">
+            <div id="left-button" class="direction-button">
+                <svg viewBox="0 0 24 24" width="100%" height="100%">
+                    <polygon points="4,12 20,4 20,20" fill="#5577ee" stroke="#ffffff" stroke-width="2"/>
+                </svg>
+            </div>
+            <div id="down-button" class="direction-button">
+                <svg viewBox="0 0 24 24" width="100%" height="100%">
+                    <polygon points="12,20 20,4 4,4" fill="#5577ee" stroke="#ffffff" stroke-width="2"/>
+                </svg>
+            </div>
+            <div id="right-button" class="direction-button">
+                <svg viewBox="0 0 24 24" width="100%" height="100%">
+                    <polygon points="20,12 4,20 4,4" fill="#5577ee" stroke="#ffffff" stroke-width="2"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bouton de changement de caméra (en haut à droite) -->
+    <div id="camera-button" class="mobile-button">
+        <svg viewBox="0 0 24 24" width="100%" height="100%">
+            <circle cx="12" cy="12" r="10" fill="#44aa44" stroke="#ffffff" stroke-width="2"/>
+            <text x="12" y="14" text-anchor="middle" fill="white" font-size="8" font-weight="bold">CAM</text>
+        </svg>
+    </div>
+</div>
+
+<style>
+    /* Styles pour les contrôles mobiles */
+    #mobile-controls {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none; /* Permet de cliquer à travers le conteneur */
+        z-index: 1000;
+        touch-action: none; /* Désactiver les actions tactiles par défaut */
+    }
+    
+    .mobile-button {
+        position: absolute;
+        width: 60px;
+        height: 60px;
+        pointer-events: auto; /* Réactiver les événements pour ce bouton */
+        filter: drop-shadow(0 0 4px rgba(0,0,0,0.5));
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    #fire-button {
+        left: 20px;
+        bottom: 20px;
+    }
+    
+    #camera-button {
+        right: 20px;
+        top: 20px;
+    }
+    
+    #direction-controls {
+        position: absolute;
+        right: 20px;
+        bottom: 20px;
+        width: 150px;
+        height: 150px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        pointer-events: auto;
+    }
+    
+    .direction-row {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+    
+    .direction-button {
+        width: 50px;
+        height: 50px;
+        filter: drop-shadow(0 0 4px rgba(0,0,0,0.5));
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    /* Ajout d'un effet visuel lors de l'appui */
+    .mobile-button:active, .direction-button:active {
+        transform: scale(0.9);
+        opacity: 0.8;
+    }
+</style>
+
+<script>
+    // Détecter si l'appareil est mobile
+    function isMobileDevice() {
+        return (typeof window.orientation !== "undefined") || (navigator.userAgent.indexOf('IEMobile') !== -1);
+    }
+    
+    // Initialiser les contrôles mobiles
+    function initMobileControls() {
+        const mobileControls = document.getElementById('mobile-controls');
+        
+        // Afficher les contrôles uniquement sur mobile
+        if (isMobileDevice()) {
+            mobileControls.style.display = 'block';
+            
+            // Bouton de tir
+            const fireButton = document.getElementById('fire-button');
+            
+            // Contrôles directionnels
+            const upButton = document.getElementById('up-button');
+            const downButton = document.getElementById('down-button');
+            const leftButton = document.getElementById('left-button');
+            const rightButton = document.getElementById('right-button');
+            
+            // Bouton de caméra
+            const cameraButton = document.getElementById('camera-button');
+            
+            // Gestionnaires d'événements pour les touches directionnelles
+            function setupDirectionButton(button, keyName) {
+                // Événement tactile - appui
+                button.addEventListener('touchstart', function(e) {
+                    e.preventDefault(); // Empêcher le défilement
+                    keys[keyName] = true;
+                });
+                
+                // Événement tactile - relâchement
+                button.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    keys[keyName] = false;
+                });
+                
+                // Événement tactile - sortie du bouton
+                button.addEventListener('touchcancel', function(e) {
+                    e.preventDefault();
+                    keys[keyName] = false;
+                });
+                
+                // Support des événements souris pour le débogage sur ordinateur
+                button.addEventListener('mousedown', function(e) {
+                    keys[keyName] = true;
+                });
+                
+                button.addEventListener('mouseup', function(e) {
+                    keys[keyName] = false;
+                });
+                
+                button.addEventListener('mouseleave', function(e) {
+                    keys[keyName] = false;
+                });
+            }
+            
+            // Configurer les boutons directionnels
+            setupDirectionButton(upButton, 'ArrowUp');
+            setupDirectionButton(downButton, 'ArrowDown');
+            setupDirectionButton(leftButton, 'ArrowLeft');
+            setupDirectionButton(rightButton, 'ArrowRight');
+            
+            // Configurer le bouton de tir
+            fireButton.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                keys['Control'] = true;
+            });
+            
+            fireButton.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                keys['Control'] = false;
+            });
+            
+            fireButton.addEventListener('mousedown', function(e) {
+                keys['Control'] = true;
+            });
+            
+            fireButton.addEventListener('mouseup', function(e) {
+                keys['Control'] = false;
+            });
+            
+            // Configurer le bouton de changement de caméra
+            cameraButton.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                // Utiliser l'API KeyboardEvent pour simuler l'appui sur la touche 'c'
+                const keyEvent = new KeyboardEvent('keydown', { key: 'c' });
+                document.dispatchEvent(keyEvent);
+            });
+            
+            cameraButton.addEventListener('mousedown', function() {
+                const keyEvent = new KeyboardEvent('keydown', { key: 'c' });
+                document.dispatchEvent(keyEvent);
+            });
+        }
+    }
+    
+    // Initialiser les contrôles mobiles lorsque la page est chargée
+    window.addEventListener('load', initMobileControls);
+</script>
 	<a target="_blank" href="https://jam.pieter.com" style="font-family: 'system-ui', sans-serif; position: fixed; bottom: -1px; right: -1px; padding: 7px; font-size: 14px; font-weight: bold; background: #fff; color: #000; text-decoration: none; z-index: 10; border-top-left-radius: 12px; z-index: 10000; border: 1px solid #fff;">🕹️ Vibe Jam 2025</a>
 </body>
 </html>
