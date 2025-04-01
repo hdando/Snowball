@@ -329,7 +329,7 @@ function generateStaticStructures() {
   };
   
   // Créer les arbres
-  const treeCount = 150;
+  const treeCount = 100;
   for (let i = 0; i < treeCount; i++) {
     let x, z;
 	do {
