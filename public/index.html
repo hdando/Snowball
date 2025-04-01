@@ -963,8 +963,6 @@
                 this.mesh.position.z = 0;
                 this.group.add(this.mesh);
                 
-
-                
                 // Propriétés de collision
                 this.collider = this.mesh;
                 this.hasCollision = true;
@@ -983,15 +981,18 @@
             
 			// Mettre à jour le projectile
 			update() {
+				// Vecteur de déplacement
+				const movement = this.direction.clone().multiplyScalar(this.speed);
+				
 				// Déplacer le projectile
-				this.group.position.add(this.direction.clone().multiplyScalar(this.speed));
+				this.group.position.add(movement);
 				this.light.position.copy(this.group.position);
 				
 				// Faire tourner légèrement l'obus pour un effet réaliste
 				this.mesh.rotation.z += 0.1;
-							   
-				// Mettre à jour la distance parcourue
-				this.distance += this.speed;
+				
+				// Mettre à jour la distance parcourue (distance réelle)
+				this.distance += movement.length();
 				
 				// Vérifier si le projectile a atteint sa portée maximale
 				if (this.distance >= this.maxDistance) {
@@ -1546,7 +1547,7 @@
 								});
                 
                 // Hauteur des murs
-                const wallHeight = 5;
+                const wallHeight = 0.4;
                 
 				// Créer une bordure circulaire
 				const radius = this.width / 2; // Rayon du cercle = moitié de la largeur
@@ -1571,7 +1572,7 @@
 				
 				const borderGeometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
 				this.circleBorder = new THREE.Mesh(borderGeometry, borderMaterial);
-				this.circleBorder.position.y = 5;
+				this.circleBorder.position.y = 0.4;
 				this.circleBorder.rotation.x = Math.PI / 2; // Rotation pour que le cercle soit horizontal
 				this.circleBorder.userData.type = 'wall';
 				scene.add(this.circleBorder);
@@ -4599,8 +4600,8 @@
 			}
 			
 			// Formater le temps restant
-			const minutes = Math.floor((timeLeft-35)/ 60000);
-			const seconds = Math.floor(((timeLeft -35)% 60000) / 1000);
+			const minutes = Math.floor(timeLeft / 60000);
+			const seconds = Math.floor((timeLeft % 60000) / 1000);
 			const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 			
 			// Ajouter une classe d'alerte si moins de 5 minutes
