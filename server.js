@@ -23,18 +23,24 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Limites de la carte pour validation
 const MAP_BOUNDS = {
-  minX: -50, maxX: 50,
-  minY: 0, maxY: 10,
-  minZ: -50, maxZ: 50
+  radius: 200,  // Rayon du cercle
+  minY: 0, maxY: 10
 };
 
 // Vérifier si une position est valide (dans les limites de la carte)
 function isValidPosition(position) {
   if (!position || typeof position !== 'object') return false;
+  
+  // Calculer la distance du centre (0,0)
+  const distanceFromCenter = Math.sqrt(
+    Math.pow(position.x, 2) + 
+    Math.pow(position.z, 2)
+  );
+  
   return (
-    position.x >= MAP_BOUNDS.minX && position.x <= MAP_BOUNDS.maxX &&
-    position.y >= MAP_BOUNDS.minY && position.y <= MAP_BOUNDS.maxY &&
-    position.z >= MAP_BOUNDS.minZ && position.z <= MAP_BOUNDS.maxZ
+    distanceFromCenter <= MAP_BOUNDS.radius &&
+    position.y >= MAP_BOUNDS.minY && 
+    position.y <= MAP_BOUNDS.maxY
   );
 }
 
@@ -296,11 +302,16 @@ function resetGameState() {
 
 // Fonction utilitaire pour générer une position aléatoire sur la carte
 function generateRandomPosition() {
-  // Ajuster selon les dimensions de votre carte
+  // Générer une position aléatoire dans une zone annulaire entre 90% et 95% du rayon
+  const angle = Math.random() * Math.PI * 2;
+  const minRadius = MAP_BOUNDS.radius * 0.90; // 90% du rayon
+  const maxRadius = MAP_BOUNDS.radius * 0.95; // 95% du rayon
+  const radius = minRadius + Math.random() * (maxRadius - minRadius);
+  
   return {
-    x: Math.random() * 100 - 50, // -50 à 50
-    y: 0.5,                      // Hauteur fixe
-    z: Math.random() * 100 - 50  // -50 à 50
+    x: Math.cos(angle) * radius,
+    y: 0.5,  // Hauteur fixe
+    z: Math.sin(angle) * radius
   };
 }
 
@@ -318,14 +329,19 @@ function generateStaticStructures() {
   };
   
   // Créer les arbres
-  const treeCount = 40;
+  const treeCount = 150;
   for (let i = 0; i < treeCount; i++) {
     let x, z;
-    do {
-      x = (Math.random() * 100 - 50) * 0.8; // -40 à 40
-      z = (Math.random() * 100 - 50) * 0.8; // -40 à 40
-    } while (Math.sqrt(x*x + z*z) < 20); // Éviter le centre
-    
+	do {
+		// Générer une position aléatoire dans un cercle de 80% du rayon de la carte
+		const angle = Math.random() * Math.PI * 2; // Angle aléatoire entre 0 et 2π
+		const mapRadius = MAP_BOUNDS.radius; // Rayon total de la carte
+		const maxTreeRadius = mapRadius * 0.8; // 80% du rayon de la carte
+		const radius = Math.random() * maxTreeRadius; // Rayon aléatoire entre 0 et 80% du rayon
+
+		x = Math.cos(angle) * radius;
+		z = Math.sin(angle) * radius;
+	} while (Math.sqrt(x*x + z*z) < 25); // Éviter le centre
     const treeId = `tree-${i}`;
     gameState.structures[treeId] = {
       id: treeId,
@@ -358,11 +374,15 @@ function spawnProcessors() {
     const type = processorTypes[Math.floor(Math.random() * processorTypes.length)];
     const id = `processor-${processorId++}`;
     
-    // Position aléatoire sur la carte (ajuster selon les dimensions de votre carte)
-    const x = Math.random() * 100 - 50; // -50 à 50
-    const z = Math.random() * 100 - 50; // -50 à 50
-    const y = 0.5; // Hauteur fixe
-    
+	// Position aléatoire dans 90% du rayon de la carte autour du château d'eau
+	const angle = Math.random() * Math.PI * 2;
+	const mapRadius = MAP_BOUNDS.radius; // Rayon total de la carte
+	const maxSpawnRadius = mapRadius * 0.9; // 90% du rayon
+	const radius = Math.random() * maxSpawnRadius;
+	const x = Math.cos(angle) * radius;
+	const z = Math.sin(angle) * radius;
+	const y = 0.5; // Hauteur augmentée pour meilleure visibilité
+	
     // Valeurs de boost
     const boostValues = {
       hp: 1,
@@ -392,13 +412,24 @@ function spawnCannons() {
   if (currentGameState.state !== GameState.PLAYING) return;
 
   // Limiter le nombre de canons présents dans le jeu
-  if (Object.keys(gameState.cannons).length < 20) {
+  if (Object.keys(gameState.cannons).length < 50) {
     const id = `cannon-${cannonId++}`;
     
-    // Position aléatoire sur la carte
-    const x = Math.random() * 100 - 50; // -50 à 50
-    const z = Math.random() * 100 - 50; // -50 à 50
-    const y = 0.5; // Hauteur fixe
+    // Position aléatoire autour du château d'eau
+	let x, z;
+	const waterTowerPosition = {x: 0, y: 0, z: 0}; // Position du château d'eau au centre
+	const minDistance = 5; // Distance minimale du château d'eau
+	const maxDistance = 25; // Rayon maximal d'apparition
+
+	do {
+	  // Générer une position dans un cercle
+	  const angle = Math.random() * Math.PI * 2;
+	  const radius = minDistance + Math.random() * (maxDistance - minDistance);
+	  x = waterTowerPosition.x + Math.cos(angle) * radius;
+	  z = waterTowerPosition.z + Math.sin(angle) * radius;
+	} while (!isValidPosition({x, y: 0.5, z})); // Vérifier que la position est valide
+
+	const y = 0.5; // Hauteur augmentée pour meilleure visibilité
     
     gameState.cannons[id] = {
       id,
@@ -1085,8 +1116,8 @@ io.on('connection', (socket) => {
 generateStaticStructures();
 
 // Démarrer les intervalles pour créer des objets
-const PROCESSOR_SPAWN_INTERVAL = 1000; // 1 seconde
-const CANNON_SPAWN_INTERVAL = 15000; // 15 secondes
+const PROCESSOR_SPAWN_INTERVAL = 500; // 0.5 seconde
+const CANNON_SPAWN_INTERVAL = 30000; // 30 secondes
 
 setInterval(spawnProcessors, PROCESSOR_SPAWN_INTERVAL);
 setInterval(spawnCannons, CANNON_SPAWN_INTERVAL);
