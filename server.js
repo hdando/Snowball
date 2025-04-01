@@ -481,7 +481,7 @@ function spawnDroppedProcessors(playerId, position) {
       
       const processorPosition = {
         x: position.x + randomOffset.x,
-        y: position.y + randomOffset.y,
+        y: 0 + randomOffset.y,
         z: position.z + randomOffset.z
       };
       
