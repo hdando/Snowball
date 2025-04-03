@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const BotManager = require('./AIbots/bot-manager');
 
 // Créer l'application Express
 const app = express();
@@ -15,6 +16,15 @@ const io = new Server(server, {
   pingTimeout: 60000  // Augmenter le timeout
 });
 
+// Initialisation du gestionnaire de bots - AJOUTEZ CECI
+const botManager = new BotManager(io, gameState);
+console.log("====== BOT MANAGER CRÉÉ ======");
+try {
+  botManager.loadBots();
+  console.log("====== BOTS CHARGÉS ======");
+} catch (error) {
+  console.error("ERREUR CHARGEMENT BOTS:", error);
+}
 // Servir les fichiers statiques
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -149,6 +159,7 @@ function getDefaultPlayerStats() {
 
 // Gestion du cycle de jeu
 function startGameCycle() {
+	console.log("====== DÉMARRAGE CYCLE DE JEU ======");
   // Réinitialiser correctement les temps
   currentGameState.startTime = Date.now();
   currentGameState.endTime = Date.now() + GAME_DURATION;
@@ -156,11 +167,29 @@ function startGameCycle() {
   console.log(`Nouvelle partie démarrée: ${currentGameState.gameId}`);
   console.log(`La partie se terminera à: ${new Date(currentGameState.endTime).toLocaleTimeString()}`);
   
+	// Avant le spawn des bots
+	console.log("====== SPAWN DES BOTS ======");
+	try {
+	  botManager.spawnBots();
+	  console.log("====== BOTS SPAWNED ======");
+	} catch (error) {
+	  console.error("ERREUR SPAWN BOTS:", error);
+	} 
+	
+  // Créer un intervalle pour les mises à jour des bots
+  const botUpdateInterval = setInterval(() => {
+    botManager.updateBots();
+  }, 50); // Mettre à jour les bots 20 fois par seconde
+  
   // Planifier la fin de la partie en utilisant l'endTime calculé
   const timeToEnd = currentGameState.endTime - Date.now();
   
   // Planifier la fin de la partie
   setTimeout(() => {
+	// Arrêter les mises à jour des bots
+    clearInterval(botUpdateInterval);	
+    botManager.cleanupBots();
+	
     endGame();
   }, timeToEnd); // Utiliser le temps calculé, pas GAME_DURATION directement
 }
@@ -205,6 +234,9 @@ function prepareRestart() {
 // Redémarrer la partie
 function restartGame() {
   console.log('Redémarrage de la partie...');
+  
+  // Nettoyer les bots avant de réinitialiser
+  botManager.cleanupBots();
   
   // Réinitialiser l'état du jeu
   resetGameState();
@@ -506,6 +538,321 @@ function spawnDroppedProcessors(playerId, position) {
 // GESTION DES CONNEXIONS ET ÉVÉNEMENTS
 // -----------------------------------
 
+// Avant la section io.on('connection')
+function handlePlayerJoin(socket, playerData) {
+  // Validation des données du joueur
+  if (!playerData || typeof playerData !== 'object') {
+    console.log("Données de joueur invalides:", playerData);
+    return;
+  }
+  
+  // Vérifier la position
+  const position = isValidPosition(playerData.position) 
+    ? playerData.position 
+    : generateRandomPosition();
+  
+  // Valider les autres champs
+  const username = playerData.username || `Robot-${socket.id.substr(0, 4)}`;
+  const stats = validatePlayerStats(playerData.stats);
+  const hp = validateNumber(playerData.hp, 1, 1000, 100);
+  const maxHp = validateNumber(playerData.maxHp, 1, 1000, 100);
+  
+  // Ajouter le joueur à l'état du jeu
+  gameState.players[socket.id] = {
+    id: socket.id,
+    position: position,
+    rotation: playerData.rotation || 0,
+    direction: playerData.direction || { x: 0, y: 0, z: -1 },
+    stats: stats,
+    hp: hp,
+    maxHp: maxHp,
+    isAlive: true,
+    username: username
+  };
+  
+  // Informer tous les autres joueurs du nouveau venu
+  socket.broadcast.emit('playerJoined', {
+    id: socket.id,
+    ...gameState.players[socket.id]
+  });
+  
+  // Envoyer la liste complète des joueurs au nouveau joueur
+  socket.emit('playerList', gameState.players);
+  
+  console.log(`Joueur ${username} (${socket.id}) a rejoint la partie`);
+}
+
+function handlePlayerUpdate(socket, playerData) {
+  if (!gameState.players[socket.id]) return;
+  
+  // Vérifier si la position est valide
+  if (playerData.position && !isValidPosition(playerData.position)) {
+    console.log(`Position invalide reçue de ${socket.id}:`, playerData.position);
+    socket.emit('positionReset', gameState.players[socket.id].position);
+    return;
+  }
+  
+  // Vérifier si le déplacement est réaliste (pas de téléportation)
+  if (playerData.position && gameState.players[socket.id].position) {
+    const lastPos = gameState.players[socket.id].position;
+    const distance = calculateDistance(playerData.position, lastPos);
+    
+    // Calculer la distance maximale possible basée sur la vitesse
+    const playerSpeed = gameState.players[socket.id].stats?.speed || 0.02;
+    const maxDistance = playerSpeed * 60; // Valeur arbitraire à ajuster
+    
+    if (distance > maxDistance) {
+      console.log(`Mouvement suspect de ${socket.id}: ${distance.toFixed(2)} unités (max ${maxDistance.toFixed(2)})`);
+      socket.emit('positionReset', lastPos);
+      return;
+    }
+  }
+  
+  // Valider les autres champs avant de mettre à jour
+  const validatedUpdate = {};
+  
+  if (playerData.position) validatedUpdate.position = playerData.position;
+  if (typeof playerData.rotation === 'number') validatedUpdate.rotation = playerData.rotation;
+  if (playerData.direction) validatedUpdate.direction = playerData.direction;
+  if (typeof playerData.isAlive === 'boolean') validatedUpdate.isAlive = playerData.isAlive;
+  if (typeof playerData.hp === 'number') {
+    validatedUpdate.hp = validateNumber(
+      playerData.hp, 
+      0, 
+      gameState.players[socket.id].maxHp, 
+      gameState.players[socket.id].hp
+    );
+  }
+  
+  // Si tout est OK, mettre à jour
+  gameState.players[socket.id] = {
+    ...gameState.players[socket.id],
+    ...validatedUpdate
+  };
+  
+  // Diffuser la mise à jour aux autres joueurs
+  socket.broadcast.emit('playerMoved', {
+    id: socket.id,
+    ...validatedUpdate
+  });
+}
+
+function handlePlayerShoot(socket, projectileData) {
+  // Validation des données
+  if (!projectileData || !isValidPosition(projectileData.position) || !projectileData.direction) {
+    console.log("Données de projectile invalides:", projectileData);
+    return;
+  }
+  
+  // Vérifier si le joueur existe et est vivant
+  if (!gameState.players[socket.id] || !gameState.players[socket.id].isAlive) {
+    console.log(`Tentative de tir par un joueur mort ou inexistant: ${socket.id}`);
+    return;
+  }
+  
+  // Vérifier si le tir provient bien de la position du joueur
+  const playerPos = gameState.players[socket.id].position;
+  const distance = calculateDistance(playerPos, projectileData.position);
+  
+  if (distance > 5) { // 5 unités = distance raisonnable pour le canon
+    console.log(`Position de tir suspecte: ${distance.toFixed(2)} unités de distance`);
+    return;
+  }
+  
+  // Normaliser la direction
+  const direction = projectileData.direction;
+  const magnitude = Math.sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+  if (magnitude === 0) {
+    console.log("Direction de projectile invalide (magnitude 0)");
+    return;
+  }
+  
+  const normalizedDirection = {
+    x: direction.x / magnitude,
+    y: direction.y / magnitude,
+    z: direction.z / magnitude
+  };
+  
+  // Limiter les valeurs de dégâts et portée aux stats du joueur
+  const playerStats = gameState.players[socket.id].stats;
+  const damage = playerStats ? playerStats.attack : 10;
+  const range = playerStats ? playerStats.range : 10;
+  
+  // Utiliser l'ID fourni par le client s'il existe, sinon en générer un
+  const id = projectileData.projectileId || `projectile-${projectileId++}`;
+  
+  // Stocker la référence au projectile dans gameState
+  gameState.projectiles[id] = {
+    id,
+    ownerId: socket.id,
+    position: projectileData.position,
+    direction: normalizedDirection,
+    damage: damage,
+    range: range,
+    createdAt: Date.now()
+  };
+  
+  // Diffuser l'information du tir à tous les joueurs
+  io.emit('projectileCreated', {
+    id,
+    ownerId: socket.id,
+    position: projectileData.position,
+    direction: normalizedDirection,
+    damage: damage,
+    range: range
+  });
+}
+
+function handleProcessorCollected(socket, data) {
+  // Validation de base
+  if (!data || !data.processorId) {
+    console.log("Données de processeur incomplètes");
+    return;
+  }
+
+  // Vérifier que le processeur existe
+  if (!gameState.processors[data.processorId]) {
+    console.log(`Processeur inexistant ou déjà collecté: ${data.processorId}`);
+
+    // Envoyer une mise à jour de synchronisation au joueur
+    socket.emit('syncGameState', {
+      processors: Object.keys(gameState.processors),
+      players: { [socket.id]: gameState.players[socket.id] }
+    });
+    return;
+  }
+  
+  // Vérifier que le joueur existe
+  if (!gameState.players[socket.id]) {
+    console.log(`Joueur inexistant pour collecte: ${socket.id}`);
+    return;
+  }
+  
+  // Vérifier la distance entre le joueur et le processeur
+  const distance = calculateDistance(
+    gameState.players[socket.id].position,
+    gameState.processors[data.processorId].position
+  );
+  
+  // Distance maximale de collecte (ajustée selon l'échelle du joueur)
+  let baseCollectDistance = 2;
+  // Si le joueur a des stats, on peut ajuster en fonction de son échelle approximative
+  if (gameState.players[socket.id].stats && gameState.players[socket.id].stats.processorCounts) {
+    const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts)
+      .reduce((sum, count) => sum + count, 0);
+    // Augmenter la distance de collecte de 0.5% par processeur collecté
+    baseCollectDistance *= (1 + (totalProcessors * 0.005));
+  }
+  
+  if (distance > baseCollectDistance) {
+    console.log(`Distance de collecte suspecte: ${distance.toFixed(2)} > ${baseCollectDistance.toFixed(2)}`);
+    return;
+  }
+  
+  // Si toutes les vérifications passent, poursuivre avec la collecte
+  const processor = gameState.processors[data.processorId];
+  const processorType = processor.type;
+  const boostValue = processor.boost;
+  
+  // Supprimer le processeur de l'état du jeu
+  delete gameState.processors[data.processorId];
+  
+  // Diffuser l'information à tous les joueurs
+  io.emit('processorRemoved', {
+    id: data.processorId
+  });
+  
+  // Mettre à jour les statistiques du joueur
+  if (!gameState.players[socket.id].stats) {
+    gameState.players[socket.id].stats = getDefaultPlayerStats();
+  }
+  
+  if (!gameState.players[socket.id].stats.processorCounts) {
+    gameState.players[socket.id].stats.processorCounts = {
+      hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
+      range: 0, speed: 0, repairSpeed: 0
+    };
+  }
+  
+  // Mettre à jour la statistique correspondante
+  switch(processorType) {
+    case 'hp':
+      gameState.players[socket.id].maxHp += boostValue;
+      gameState.players[socket.id].hp += boostValue;
+      break;
+    case 'resistance':
+    case 'attack':
+    case 'attackSpeed':
+    case 'range':
+    case 'speed':
+    case 'repairSpeed':
+      gameState.players[socket.id].stats[processorType] += boostValue;
+      break;
+  }
+  
+  // Incrémenter le compteur de processeurs
+  gameState.players[socket.id].stats.processorCounts[processorType]++;
+    
+  // Calculer le total des processeurs
+  const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts).reduce((sum, count) => sum + count, 0);
+  
+  // Diffuser la mise à jour des statistiques
+  io.emit('playerStatsUpdated', {
+    id: socket.id,
+    stats: gameState.players[socket.id].stats,
+    hp: gameState.players[socket.id].hp,
+    maxHp: gameState.players[socket.id].maxHp,
+    totalProcessors: totalProcessors
+  });
+}
+
+function handleCannonCollected(socket, data) {
+  // Validation de base
+  if (!data || !data.cannonId) {
+    console.log("Données de canon incomplètes");
+    return;
+  }
+  
+  // Vérifier que le canon existe
+  if (!gameState.cannons[data.cannonId]) {
+    console.log(`Canon inexistant: ${data.cannonId}`);
+    return;
+  }
+  
+  // Vérifier que le joueur existe
+  if (!gameState.players[socket.id]) {
+    console.log(`Joueur inexistant pour collecte: ${socket.id}`);
+    return;
+  }
+  
+  // Vérifier la distance entre le joueur et le canon
+  const distance = calculateDistance(
+    gameState.players[socket.id].position,
+    gameState.cannons[data.cannonId].position
+  );
+  
+  // Distance maximale de collecte (ajustée selon l'échelle du joueur)
+  let baseCollectDistance = 2;
+  if (gameState.players[socket.id].stats && gameState.players[socket.id].stats.processorCounts) {
+    const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts)
+      .reduce((sum, count) => sum + count, 0);
+    baseCollectDistance *= (1 + (totalProcessors * 0.005));
+  }
+  
+  if (distance > baseCollectDistance) {
+    console.log(`Distance de collecte de canon suspecte: ${distance.toFixed(2)} > ${baseCollectDistance.toFixed(2)}`);
+    return;
+  }
+  
+  // Supprimer le canon de l'état du jeu
+  delete gameState.cannons[data.cannonId];
+  
+  // Diffuser l'information à tous les joueurs
+  io.emit('cannonRemoved', {
+    id: data.cannonId
+  });
+}
+
 // Gérer les connexions WebSocket
 io.on('connection', (socket) => {
   console.log(`Nouveau joueur connecté: ${socket.id}`);
@@ -532,46 +879,7 @@ io.on('connection', (socket) => {
   
   // Traiter la création d'un nouveau joueur
   socket.on('playerJoin', (playerData) => {
-    // Validation des données du joueur
-    if (!playerData || typeof playerData !== 'object') {
-      console.log("Données de joueur invalides:", playerData);
-      return;
-    }
-    
-    // Vérifier la position
-    const position = isValidPosition(playerData.position) 
-      ? playerData.position 
-      : generateRandomPosition();
-    
-    // Valider les autres champs
-    const username = playerData.username || `Robot-${socket.id.substr(0, 4)}`;
-    const stats = validatePlayerStats(playerData.stats);
-    const hp = validateNumber(playerData.hp, 1, 1000, 100);
-    const maxHp = validateNumber(playerData.maxHp, 1, 1000, 100);
-    
-    // Ajouter le joueur à l'état du jeu
-    gameState.players[socket.id] = {
-      id: socket.id,
-      position: position,
-      rotation: playerData.rotation || 0,
-      direction: playerData.direction || { x: 0, y: 0, z: -1 },
-      stats: stats,
-      hp: hp,
-      maxHp: maxHp,
-      isAlive: true,
-      username: username
-    };
-    
-    // Informer tous les autres joueurs du nouveau venu
-    socket.broadcast.emit('playerJoined', {
-      id: socket.id,
-      ...gameState.players[socket.id]
-    });
-    
-    // Envoyer la liste complète des joueurs au nouveau joueur
-    socket.emit('playerList', gameState.players);
-    
-    console.log(`Joueur ${username} (${socket.id}) a rejoint la partie`);
+    handlePlayerJoin(socket, playerData);
   });
   
   // Gérer les dégâts aux structures
@@ -629,127 +937,13 @@ io.on('connection', (socket) => {
   
   // Mettre à jour la position du joueur
   socket.on('playerUpdate', (playerData) => {
-    if (!gameState.players[socket.id]) return;
-    
-    // Vérifier si la position est valide
-    if (playerData.position && !isValidPosition(playerData.position)) {
-      console.log(`Position invalide reçue de ${socket.id}:`, playerData.position);
-      socket.emit('positionReset', gameState.players[socket.id].position);
-      return;
-    }
-    
-    // Vérifier si le déplacement est réaliste (pas de téléportation)
-    if (playerData.position && gameState.players[socket.id].position) {
-      const lastPos = gameState.players[socket.id].position;
-      const distance = calculateDistance(playerData.position, lastPos);
-      
-      // Calculer la distance maximale possible basée sur la vitesse
-      const playerSpeed = gameState.players[socket.id].stats?.speed || 0.02;
-      const maxDistance = playerSpeed * 60; // Valeur arbitraire à ajuster
-      
-      if (distance > maxDistance) {
-        console.log(`Mouvement suspect de ${socket.id}: ${distance.toFixed(2)} unités (max ${maxDistance.toFixed(2)})`);
-        socket.emit('positionReset', lastPos);
-        return;
-      }
-    }
-    
-    // Valider les autres champs avant de mettre à jour
-    const validatedUpdate = {};
-    
-    if (playerData.position) validatedUpdate.position = playerData.position;
-    if (typeof playerData.rotation === 'number') validatedUpdate.rotation = playerData.rotation;
-    if (playerData.direction) validatedUpdate.direction = playerData.direction;
-    if (typeof playerData.isAlive === 'boolean') validatedUpdate.isAlive = playerData.isAlive;
-    if (typeof playerData.hp === 'number') {
-      validatedUpdate.hp = validateNumber(
-        playerData.hp, 
-        0, 
-        gameState.players[socket.id].maxHp, 
-        gameState.players[socket.id].hp
-      );
-    }
-    
-    // Si tout est OK, mettre à jour
-    gameState.players[socket.id] = {
-      ...gameState.players[socket.id],
-      ...validatedUpdate
-    };
-    
-    // Diffuser la mise à jour aux autres joueurs
-    socket.broadcast.emit('playerMoved', {
-      id: socket.id,
-      ...validatedUpdate
-    });
+    handlePlayerUpdate(socket, playerData);
   });
   
   // Gérer le tir
   socket.on('playerShoot', (projectileData) => {
-    // Validation des données
-    if (!projectileData || !isValidPosition(projectileData.position) || !projectileData.direction) {
-      console.log("Données de projectile invalides:", projectileData);
-      return;
-    }
-    
-    // Vérifier si le joueur existe et est vivant
-    if (!gameState.players[socket.id] || !gameState.players[socket.id].isAlive) {
-      console.log(`Tentative de tir par un joueur mort ou inexistant: ${socket.id}`);
-      return;
-    }
-    
-    // Vérifier si le tir provient bien de la position du joueur
-    const playerPos = gameState.players[socket.id].position;
-    const distance = calculateDistance(playerPos, projectileData.position);
-    
-    if (distance > 5) { // 5 unités = distance raisonnable pour le canon
-      console.log(`Position de tir suspecte: ${distance.toFixed(2)} unités de distance`);
-      return;
-    }
-    
-    // Normaliser la direction
-    const direction = projectileData.direction;
-    const magnitude = Math.sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-    if (magnitude === 0) {
-      console.log("Direction de projectile invalide (magnitude 0)");
-      return;
-    }
-    
-    const normalizedDirection = {
-      x: direction.x / magnitude,
-      y: direction.y / magnitude,
-      z: direction.z / magnitude
-    };
-    
-    // Limiter les valeurs de dégâts et portée aux stats du joueur
-    const playerStats = gameState.players[socket.id].stats;
-    const damage = playerStats ? playerStats.attack : 10;
-    const range = playerStats ? playerStats.range : 10;
-    
-    // Utiliser l'ID fourni par le client s'il existe, sinon en générer un
-	const id = projectileData.projectileId || `projectile-${projectileId++}`;
-	
-	// Stocker la référence au projectile dans gameState
-    gameState.projectiles[id] = {
-      id,
-      ownerId: socket.id,
-      position: projectileData.position,
-      direction: normalizedDirection,
-      damage: damage,
-      range: range,
-      createdAt: Date.now()
-    };
-    
-    // Diffuser l'information du tir à tous les joueurs
-    io.emit('projectileCreated', {
-      id,
-      ownerId: socket.id,
-      position: projectileData.position,
-      direction: normalizedDirection,
-      damage: damage,
-      range: range
-    });
+    handlePlayerShoot(socket, projectileData);
   });
-  
 	// Gérer l'impact des projectiles
 	socket.on('projectileHit', (data) => {
 	  // Validation de base
@@ -910,155 +1104,55 @@ io.on('connection', (socket) => {
  
   // Gérer la collecte de processeurs
   socket.on('processorCollected', (data) => {
-    // Validation de base
-    if (!data || !data.processorId) {
-      console.log("Données de processeur incomplètes");
-      return;
-    }
-
-	// Vérifier que le processeur existe
-	if (!gameState.processors[data.processorId]) {
-	console.log(`Processeur inexistant ou déjà collecté: ${data.processorId}`);
-
-	// Envoyer une mise à jour de synchronisation au joueur
-	socket.emit('syncGameState', {
-	  processors: Object.keys(gameState.processors),
-	  players: { [socket.id]: gameState.players[socket.id] }
-	});
-	return;
-	}
-    
-    // Vérifier que le joueur existe
-    if (!gameState.players[socket.id]) {
-      console.log(`Joueur inexistant pour collecte: ${socket.id}`);
-      return;
-    }
-    
-    // Vérifier la distance entre le joueur et le processeur
-    const distance = calculateDistance(
-      gameState.players[socket.id].position,
-      gameState.processors[data.processorId].position
-    );
-    
-    // Distance maximale de collecte (ajustée selon l'échelle du joueur)
-    let baseCollectDistance = 2;
-    // Si le joueur a des stats, on peut ajuster en fonction de son échelle approximative
-    if (gameState.players[socket.id].stats && gameState.players[socket.id].stats.processorCounts) {
-      const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts)
-        .reduce((sum, count) => sum + count, 0);
-      // Augmenter la distance de collecte de 0.5% par processeur collecté
-      baseCollectDistance *= (1 + (totalProcessors * 0.005));
-    }
-    
-    if (distance > baseCollectDistance) {
-      console.log(`Distance de collecte suspecte: ${distance.toFixed(2)} > ${baseCollectDistance.toFixed(2)}`);
-      return;
-    }
-    
-    // Si toutes les vérifications passent, poursuivre avec la collecte
-    const processor = gameState.processors[data.processorId];
-    const processorType = processor.type;
-    const boostValue = processor.boost;
-    
-    // Supprimer le processeur de l'état du jeu
-    delete gameState.processors[data.processorId];
-    
-    // Diffuser l'information à tous les joueurs
-    io.emit('processorRemoved', {
-      id: data.processorId
-    });
-    
-    // Mettre à jour les statistiques du joueur
-    if (!gameState.players[socket.id].stats) {
-      gameState.players[socket.id].stats = getDefaultPlayerStats();
-    }
-    
-    if (!gameState.players[socket.id].stats.processorCounts) {
-      gameState.players[socket.id].stats.processorCounts = {
-        hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
-        range: 0, speed: 0, repairSpeed: 0
-      };
-    }
-    
-    // Mettre à jour la statistique correspondante
-    switch(processorType) {
-      case 'hp':
-        gameState.players[socket.id].maxHp += boostValue;
-        gameState.players[socket.id].hp += boostValue;
-        break;
-      case 'resistance':
-      case 'attack':
-      case 'attackSpeed':
-      case 'range':
-      case 'speed':
-      case 'repairSpeed':
-        gameState.players[socket.id].stats[processorType] += boostValue;
-        break;
-    }
-    
-    // Incrémenter le compteur de processeurs
-    gameState.players[socket.id].stats.processorCounts[processorType]++;
-		
-	// Calculer le total des processeurs
-	const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts).reduce((sum, count) => sum + count, 0);
-    
-	// Diffuser la mise à jour des statistiques
-	io.emit('playerStatsUpdated', {
-	id: socket.id,
-	stats: gameState.players[socket.id].stats,
-	hp: gameState.players[socket.id].hp,
-	maxHp: gameState.players[socket.id].maxHp,
-	totalProcessors: totalProcessors
+    handleProcessorCollected(socket, data);
   });
-});
   
   // Nouvel événement pour la collecte de canons
   socket.on('cannonCollected', (data) => {
-    // Validation de base
-    if (!data || !data.cannonId) {
-      console.log("Données de canon incomplètes");
-      return;
-    }
-    
-    // Vérifier que le canon existe
-    if (!gameState.cannons[data.cannonId]) {
-      console.log(`Canon inexistant: ${data.cannonId}`);
-      return;
-    }
-    
-    // Vérifier que le joueur existe
-    if (!gameState.players[socket.id]) {
-      console.log(`Joueur inexistant pour collecte: ${socket.id}`);
-      return;
-    }
-    
-    // Vérifier la distance entre le joueur et le canon
-    const distance = calculateDistance(
-      gameState.players[socket.id].position,
-      gameState.cannons[data.cannonId].position
-    );
-    
-    // Distance maximale de collecte (ajustée selon l'échelle du joueur)
-    let baseCollectDistance = 2;
-    if (gameState.players[socket.id].stats && gameState.players[socket.id].stats.processorCounts) {
-      const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts)
-        .reduce((sum, count) => sum + count, 0);
-      baseCollectDistance *= (1 + (totalProcessors * 0.005));
-    }
-    
-    if (distance > baseCollectDistance) {
-      console.log(`Distance de collecte de canon suspecte: ${distance.toFixed(2)} > ${baseCollectDistance.toFixed(2)}`);
-      return;
-    }
-    
-    // Supprimer le canon de l'état du jeu
-    delete gameState.cannons[data.cannonId];
-    
-    // Diffuser l'information à tous les joueurs
-    io.emit('cannonRemoved', {
-      id: data.cannonId
-    });
+    handleCannonCollected(socket, data);
   });
+  
+	// Gérer les actions des bots
+	socket.on('botAction', (data) => {
+		if (data && data.botId && data.event && data.data) {
+		  // Créer un faux socket avec l'ID du bot
+		  const fakeSocket = {
+			id: data.botId,
+			emit: (event, payload) => {
+			  // Redirection des événements au gestionnaire de bots
+			  botManager.handleBotAction(data.botId, event, payload);
+			},
+			broadcast: {
+			  emit: (event, payload) => {
+				// Diffusion aux autres joueurs
+				io.emit(event, payload);
+			  }
+			}
+		  };
+		  
+		  // Rediriger vers le gestionnaire approprié
+		  switch (data.event) {
+			case 'playerJoin':
+			  handlePlayerJoin(fakeSocket, data.data);
+			  break;
+			case 'playerUpdate':
+			  handlePlayerUpdate(fakeSocket, data.data);
+			  break;
+			case 'playerShoot':
+			  handlePlayerShoot(fakeSocket, data.data);
+			  break;
+			case 'processorCollected':
+			  handleProcessorCollected(fakeSocket, data.data);
+			  break;
+			case 'cannonCollected':
+			  handleCannonCollected(fakeSocket, data.data);
+			  break;
+			// Ajoutez d'autres gestionnaires selon les besoins
+			default:
+			  console.log(`Événement bot non géré: ${data.event}`);
+		  }
+		}
+	  });
   
   // Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
   socket.on('requestGameState', () => {
@@ -1088,27 +1182,31 @@ io.on('connection', (socket) => {
     }
   });
   
-  // Gérer la déconnexion
-  socket.on('disconnect', () => {
-    console.log(`Joueur déconnecté: ${socket.id}`);
-    
-    // Garder les données du joueur pendant un certain temps pour permettre la reconnexion
-    // (à implémenter si nécessaire)
-    
-    // Pour l'instant, supprimer le joueur de l'état du jeu
-    if (gameState.players[socket.id]) {
-      delete gameState.players[socket.id];
-    }
-    
-    // Informer tous les autres joueurs de la déconnexion
-    io.emit('playerLeft', socket.id);
-  });
+	// Gérer la déconnexion
+	socket.on('disconnect', () => {
+	  console.log(`Joueur déconnecté: ${socket.id}`);
+	  
+	  // Pour l'instant, supprimer le joueur de l'état du jeu
+	  if (gameState.players[socket.id]) {
+		// AJOUTEZ CECI - Vérifier si c'est un bot
+		const isBot = socket.id.startsWith('bot-');
+		if (isBot) {
+		  botManager.handleBotDisconnect(socket.id);
+		}
+		
+		delete gameState.players[socket.id];
+	  }
+	  
+	  // Informer tous les autres joueurs de la déconnexion
+	  io.emit('playerLeft', socket.id);
+	});
   
 	socket.on('requestProcessorsUpdate', () => {
 		// Envoyer la liste complète des processeurs actuels
 		socket.emit('processorsUpdate', gameState.processors);
 	});
-  
+  // Joindre la salle des bots pour recevoir les communications
+  socket.join('botRoom');
   
 });
 
