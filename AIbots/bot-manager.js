@@ -11,6 +11,7 @@ class BotManager {
   }
 
   loadBots() {
+	  
     // Charger dynamiquement tous les bots
     const botsFolder = path.join(__dirname);
     const botFiles = fs.readdirSync(botsFolder)
@@ -24,6 +25,13 @@ class BotManager {
       } catch (error) {
         console.error(`Failed to load bot: ${file}`, error);
       }
+	console.log("Fichiers de bots détectés:", botFiles);
+	try {
+	  const BotClass = require(path.join(botsFolder, botFiles[0]));
+	  console.log("Premier bot chargé avec succès");
+	} catch (error) {
+	  console.error("Erreur lors du chargement:", error);
+	}
     });
 
     console.log(`Loaded ${this.bots.length} AI bots`);
