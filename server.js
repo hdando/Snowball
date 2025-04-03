@@ -16,15 +16,6 @@ const io = new Server(server, {
   pingTimeout: 60000  // Augmenter le timeout
 });
 
-// Initialisation du gestionnaire de bots - AJOUTEZ CECI
-const botManager = new BotManager(io, gameState);
-console.log("====== BOT MANAGER CRÉÉ ======");
-try {
-  botManager.loadBots();
-  console.log("====== BOTS CHARGÉS ======");
-} catch (error) {
-  console.error("ERREUR CHARGEMENT BOTS:", error);
-}
 // Servir les fichiers statiques
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -83,7 +74,15 @@ const GameState = {
   PODIUM: 'podium',      // Affichage du podium (1 minute)
   RESTARTING: 'restarting' // Redémarrage (quelques secondes)
 };
-
+// Initialisation du gestionnaire de bots - AJOUTEZ CECI
+const botManager = new BotManager(io, gameState);
+console.log("====== BOT MANAGER CRÉÉ ======");
+try {
+  botManager.loadBots();
+  console.log("====== BOTS CHARGÉS ======");
+} catch (error) {
+  console.error("ERREUR CHARGEMENT BOTS:", error);
+}
 // Configuration des durées (en millisecondes)
 const GAME_DURATION = 10 * 60 * 1000;  // 10 minutes
 const PODIUM_DURATION = 60 * 1000;     // 1 minute
