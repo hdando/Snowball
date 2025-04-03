@@ -75,7 +75,6 @@ const GameState = {
   RESTARTING: 'restarting' // Redémarrage (quelques secondes)
 };
 
-}
 // Configuration des durées (en millisecondes)
 const GAME_DURATION = 10 * 60 * 1000;  // 10 minutes
 const PODIUM_DURATION = 60 * 1000;     // 1 minute
@@ -98,7 +97,6 @@ const gameState = {
   projectiles: {},
   structures: {}
 };
-
 // Initialisation du gestionnaire de bots - AJOUTEZ CECI
 const botManager = new BotManager(io, gameState);
 console.log("====== BOT MANAGER CRÉÉ ======");
@@ -107,7 +105,7 @@ try {
   console.log("====== BOTS CHARGÉS ======");
 } catch (error) {
   console.error("ERREUR CHARGEMENT BOTS:", error);
-  
+}
 // Compteurs pour les IDs
 let processorId = 0;
 let cannonId = 0;
