@@ -158,7 +158,7 @@ function getDefaultPlayerStats() {
 
 // Gestion du cycle de jeu
 function startGameCycle() {
-	console.log("====== DÉMARRAGE CYCLE DE JEU ======");
+  console.log("====== DÉMARRAGE CYCLE DE JEU ======");
   // Réinitialiser correctement les temps
   currentGameState.startTime = Date.now();
   currentGameState.endTime = Date.now() + GAME_DURATION;
@@ -166,15 +166,17 @@ function startGameCycle() {
   console.log(`Nouvelle partie démarrée: ${currentGameState.gameId}`);
   console.log(`La partie se terminera à: ${new Date(currentGameState.endTime).toLocaleTimeString()}`);
   
-	// Avant le spawn des bots
-	console.log("====== SPAWN DES BOTS ======");
-	try {
-	  botManager.spawnBots();
-	  console.log("====== BOTS SPAWNED ======");
-	} catch (error) {
-	  console.error("ERREUR SPAWN BOTS:", error);
-	} 
-	
+  // Spawn des bots après une courte pause pour s'assurer que le jeu est prêt
+  setTimeout(() => {
+    console.log("====== SPAWN DES BOTS ======");
+    try {
+      botManager.spawnBots();
+      console.log("====== BOTS SPAWNED ======");
+    } catch (error) {
+      console.error("ERREUR SPAWN BOTS:", error);
+    }
+  }, 1000);
+  
   // Créer un intervalle pour les mises à jour des bots
   const botUpdateInterval = setInterval(() => {
     botManager.updateBots();
@@ -185,10 +187,10 @@ function startGameCycle() {
   
   // Planifier la fin de la partie
   setTimeout(() => {
-	// Arrêter les mises à jour des bots
-    clearInterval(botUpdateInterval);	
+    // Arrêter les mises à jour des bots
+    clearInterval(botUpdateInterval);  
     botManager.cleanupBots();
-	
+    
     endGame();
   }, timeToEnd); // Utiliser le temps calculé, pas GAME_DURATION directement
 }
@@ -1111,48 +1113,6 @@ io.on('connection', (socket) => {
     handleCannonCollected(socket, data);
   });
   
-	// Gérer les actions des bots
-	socket.on('botAction', (data) => {
-		if (data && data.botId && data.event && data.data) {
-		  // Créer un faux socket avec l'ID du bot
-		  const fakeSocket = {
-			id: data.botId,
-			emit: (event, payload) => {
-			  // Redirection des événements au gestionnaire de bots
-			  botManager.handleBotAction(data.botId, event, payload);
-			},
-			broadcast: {
-			  emit: (event, payload) => {
-				// Diffusion aux autres joueurs
-				io.emit(event, payload);
-			  }
-			}
-		  };
-		  
-		  // Rediriger vers le gestionnaire approprié
-		  switch (data.event) {
-			case 'playerJoin':
-			  handlePlayerJoin(fakeSocket, data.data);
-			  break;
-			case 'playerUpdate':
-			  handlePlayerUpdate(fakeSocket, data.data);
-			  break;
-			case 'playerShoot':
-			  handlePlayerShoot(fakeSocket, data.data);
-			  break;
-			case 'processorCollected':
-			  handleProcessorCollected(fakeSocket, data.data);
-			  break;
-			case 'cannonCollected':
-			  handleCannonCollected(fakeSocket, data.data);
-			  break;
-			// Ajoutez d'autres gestionnaires selon les besoins
-			default:
-			  console.log(`Événement bot non géré: ${data.event}`);
-		  }
-		}
-	  });
-  
   // Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
   socket.on('requestGameState', () => {
     console.log(`Joueur ${socket.id} demande un rafraîchissement de l'état du jeu`);
@@ -1187,25 +1147,23 @@ io.on('connection', (socket) => {
 	  
 	  // Pour l'instant, supprimer le joueur de l'état du jeu
 	  if (gameState.players[socket.id]) {
-		// AJOUTEZ CECI - Vérifier si c'est un bot
+		// Vérifier si c'est un bot (mais ne pas les gérer ici, cela se fait via le botManager)
 		const isBot = socket.id.startsWith('bot-');
-		if (isBot) {
-		  botManager.handleBotDisconnect(socket.id);
+		if (!isBot) {
+		  delete gameState.players[socket.id];
 		}
-		
-		delete gameState.players[socket.id];
 	  }
 	  
-	  // Informer tous les autres joueurs de la déconnexion
-	  io.emit('playerLeft', socket.id);
-	});
-  
+	  // Informer tous les autres joueurs de la déconnexion (uniquement pour les joueurs humains)
+	  if (!socket.id.startsWith('bot-')) {
+		io.emit('playerLeft', socket.id);
+	  }
+	}); 
+	
 	socket.on('requestProcessorsUpdate', () => {
 		// Envoyer la liste complète des processeurs actuels
 		socket.emit('processorsUpdate', gameState.processors);
 	});
-  // Joindre la salle des bots pour recevoir les communications
-  socket.join('botRoom');
   
 });
 
