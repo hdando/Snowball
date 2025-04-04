@@ -1,37 +1,49 @@
 // claude-bot.js
 class ClaudeBot {
   constructor(botId, io, gameState, emitAction) {
-	console.log(`Bot ${botId} created with position:`, gameState.players[botId]?.position);
     this.id = botId;
     this.io = io;
     this.gameState = gameState;
     this.emitAction = emitAction;
     this.lastMoveTime = Date.now();
     this.lastAttackTime = Date.now();
-    this.moveInterval = 2000; // Change direction every 2 seconds
-    this.attackCooldown = 1000; // Attack every 1 second
-    this.target = null;
-    this.direction = { x: 0, y: 0, z: -1 };
+    this.moveInterval = 2000;
+    this.attackCooldown = 1000;
+    this.initialized = false;
   }
 
+
   update(gameState) {
-	console.log(`Bot ${this.id} update, position:`, gameState.players[this.id]?.position);
-    const now = Date.now();
+    // Vérifier si le bot est dans l'état du jeu
     const botData = gameState.players[this.id];
     
-    // If bot is dead, do nothing
-    if (!botData || !botData.isAlive) return;
+    if (!botData) {
+      console.log(`Bot ${this.id} non trouvé dans gameState. Attente d'initialisation...`);
+      return;
+    }
+    // First successful update - log initialization
+    if (!this.initialized) {
+      console.log(`Bot ${this.id} initialized at position:`, botData.position);
+      this.initialized = true;
+    }
+	
+    if (!botData.isAlive) return;
     
-    // Find nearest processor or player
+    console.log(`Bot ${this.id} opérationnel à position:`, botData.position);
+
+    // Reste du code comme avant...
+    const now = Date.now();
+    
+    // Logique de recherche de cible
     this.findTarget(gameState, botData);
     
-    // Movement logic - change direction periodically
+    // Logique de mouvement
     if (now - this.lastMoveTime > this.moveInterval) {
       this.moveTowardsTarget(botData);
       this.lastMoveTime = now;
     }
     
-    // Attack logic - shoot if there's a player in range
+    // Logique d'attaque
     if (now - this.lastAttackTime > this.attackCooldown) {
       this.attackNearbyPlayer(gameState, botData);
     }
