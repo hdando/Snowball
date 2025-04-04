@@ -3983,6 +3983,49 @@
 				window.location.reload(true); // Le paramètre true force un rechargement depuis le serveur
 			  }, 500);
 			});
+			
+			socket.on('createBotCollider', (data) => {
+			  console.log('Création du collider pour le bot:', data.botId);
+			  
+			  // Vérifier si ce bot existe déjà dans les autres joueurs
+			  if (otherPlayers[data.botId]) {
+				console.log('Bot déjà existant, mise à jour du collider');
+				
+				// S'assurer que le bot a un collider
+				if (!otherPlayers[data.botId].hasCollision) {
+				  otherPlayers[data.botId].createCollider();
+				  otherPlayers[data.botId].hasCollision = true;
+				  
+				  // Ajouter au système de collision
+				  if (collisionSystem) {
+					collisionSystem.addObject(otherPlayers[data.botId]);
+				  }
+				}
+			  } else {
+				// Créer un joueur pour le bot avec un collider
+				const botPlayer = new Player(scene, gameMap, collisionSystem, data.botId, false);
+				botPlayer.username = data.username;
+				botPlayer.mesh.position.copy(data.position);
+				botPlayer.mesh.rotation.y = data.rotation;
+				
+				// S'assurer que le collider est créé
+				botPlayer.createCollider();
+				botPlayer.hasCollision = true;
+				
+				// Ajouter au système de collision
+				if (collisionSystem) {
+				  collisionSystem.addObject(botPlayer);
+				}
+				
+				// Stocker dans otherPlayers
+				otherPlayers[data.botId] = botPlayer;
+				
+				// Ajouter le tag de nom
+				addPlayerNameTag(botPlayer);
+				
+				console.log(`Bot ${data.botId} ajouté en tant que joueur avec collider`);
+			  }
+			});
 		
 		}
 		
