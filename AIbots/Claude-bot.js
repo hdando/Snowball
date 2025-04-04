@@ -31,8 +31,7 @@ class ClaudeBot {
     
     console.log(`ClaudeBot with obstacle avoidance and server feedback handling initialized with ID: ${this.id}`);
   }
-  
-  update(gameState) {
+
   update(gameState) {
     // Mettre à jour notre référence à l'état du jeu
     this.gameState = gameState;
