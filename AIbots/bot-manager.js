@@ -10,8 +10,7 @@ class BotManager {
     this.botIds = {};
   }
 
-  loadBots() {
-	  
+  loadBots() {	  
     // Charger dynamiquement tous les bots
     const botsFolder = path.join(__dirname);
     const botFiles = fs.readdirSync(botsFolder)
@@ -37,35 +36,37 @@ class BotManager {
     console.log(`Loaded ${this.bots.length} AI bots`);
   }
 
-  spawnBots() {
-    this.bots.forEach(bot => {
-      const botId = `bot-${bot.name}-${uuidv4().substring(0, 8)}`;
-      const botInstance = new bot.BotClass(
-        botId,
-        this.io,
-        this.gameState,
-        this.emitAction.bind(this)
-      );
-      
-      this.botIds[botId] = botInstance;
-      
-      // Position aléatoire comme un joueur normal
-      const position = this.generateRandomPosition();
-      
-      // Joindre le jeu comme un joueur humain le ferait
-      this.emitAction(botId, 'playerJoin', {
-        position,
-        rotation: Math.random() * Math.PI * 2,
-        direction: { x: 0, y: 0, z: -1 },
-        stats: this.getDefaultPlayerStats(),
-        hp: 100,
-        maxHp: 100,
-        username: `AI-${bot.name}`
-      });
-      
-      console.log(`Bot ${bot.name} spawned with ID: ${botId}`);
-    });
-  }
+	spawnBots() {
+	  this.bots.forEach(bot => {
+		const botId = `bot-${bot.name}-${uuidv4().substring(0, 8)}`;
+		const botInstance = new bot.BotClass(
+		  botId,
+		  this.io,
+		  this.gameState,
+		  this.emitAction.bind(this)
+		);
+		
+		this.botIds[botId] = botInstance;
+		
+		// Position aléatoire comme un joueur normal
+		const position = this.generateRandomPosition();
+		
+		// MODIFICATIONS ICI: Ajouter directement le bot à gameState.players
+		this.gameState.players[botId] = {
+		  id: botId,
+		  position: position,
+		  rotation: Math.random() * Math.PI * 2,
+		  direction: { x: 0, y: 0, z: -1 },
+		  stats: this.getDefaultPlayerStats(),
+		  hp: 100,
+		  maxHp: 100,
+		  isAlive: true,
+		  username: `AI-${bot.name}`
+		};
+		
+		console.log(`Bot ${bot.name} spawned with ID: ${botId} and added directly to gameState`);
+	  });
+	}
 
   emitAction(botId, event, data) {
     // Émuler l'envoi d'un événement depuis un client
