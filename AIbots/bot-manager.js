@@ -37,37 +37,49 @@ class BotManager {
   }
 
 	spawnBots() {
+	  // Pour chaque type de bot disponible
 	  this.bots.forEach(bot => {
-		const botId = `bot-${bot.name}-${uuidv4().substring(0, 8)}`;
-		const botInstance = new bot.BotClass(
-		  botId,
-		  this.io,
-		  this.gameState,
-		  this.emitAction.bind(this)
+		// Vérifier combien d'instances de ce type de bot existent déjà
+		const existingBots = Object.values(this.botIds).filter(
+		  instance => instance.constructor.name === bot.BotClass.name
 		);
 		
-		this.botIds[botId] = botInstance;
-		
-		// Position aléatoire comme un joueur normal
-		const position = this.generateRandomPosition();
-		
-		// MODIFICATIONS ICI: Ajouter directement le bot à gameState.players
-		this.gameState.players[botId] = {
-		  id: botId,
-		  position: position,
-		  rotation: Math.random() * Math.PI * 2,
-		  direction: { x: 0, y: 0, z: -1 },
-		  stats: this.getDefaultPlayerStats(),
-		  hp: 100,
-		  maxHp: 100,
-		  isAlive: true,
-		  username: `AI-${bot.name}`
-		};
-		
-		console.log(`Bot ${bot.name} spawned with ID: ${botId} and added directly to gameState`);
+		// Limiter à une seule instance par type de bot
+		if (existingBots.length === 0) {
+		  // Générer un ID unique pour ce bot
+		  const botId = `bot-${bot.name}-${uuidv4().substring(0, 8)}`;
+		  
+		  // Créer une instance du bot
+		  const botInstance = new bot.BotClass(
+			botId,
+			this.io,
+			this.gameState,
+			this.emitAction.bind(this)
+		  );
+		  
+		  // Stocker l'instance du bot
+		  this.botIds[botId] = botInstance;
+		  
+		  // Générer une position aléatoire comme un joueur normal
+		  const position = this.generateRandomPosition();
+		  
+		  // Faire rejoindre le jeu au bot comme un joueur humain le ferait
+		  this.emitAction(botId, 'playerJoin', {
+			position,
+			rotation: Math.random() * Math.PI * 2,
+			direction: { x: 0, y: 0, z: -1 },
+			stats: this.getDefaultPlayerStats(),
+			hp: 100,
+			maxHp: 100,
+			username: `AI-${bot.name}`
+		  });
+		  
+		  console.log(`Bot ${bot.name} créé avec l'ID: ${botId}`);
+		} else {
+		  console.log(`Un bot de type ${bot.name} existe déjà, pas de nouvelle instance créée.`);
+		}
 	  });
 	}
-
   emitAction(botId, event, data) {
     // Émuler l'envoi d'un événement depuis un client
     this.io.sockets.adapter.rooms.get('botRoom')?.forEach(socketId => {
