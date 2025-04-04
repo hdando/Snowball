@@ -22,7 +22,14 @@ class ClaudeBot {
     this.pathfindingMode = 'direct'; // 'direct', 'detour', ou 'random'
     this.detourAngle = 0; // Angle pour contourner les obstacles
     
-    console.log(`ClaudeBot with obstacle avoidance initialized with ID: ${this.id}`);
+    // Gestion des retours d'état du serveur
+    this.pendingActions = {};        // Actions en attente de confirmation
+    this.actionTimeout = 2000;       // Délai d'expiration pour les actions (ms)
+    this.positionRejections = 0;     // Compteur de rejets de position
+    this.lastServerState = null;     // Dernier état connu validé par le serveur
+    this.serverSyncCounter = 0;      // Compteur pour forcer une synchronisation périodique
+    
+    console.log(`ClaudeBot with obstacle avoidance and server feedback handling initialized with ID: ${this.id}`);
   }
   
   update(gameState) {
@@ -53,16 +60,78 @@ class ClaudeBot {
     // Vérifier si on est coincé
     this.checkIfStuck(me);
     
+    // Vérifier les actions en attente et supprimer celles expirées
+    this.cleanupPendingActions(currentTime);
+    
     // Fonction principale : trouver et collecter le processeur le plus proche
     this.findAndCollectProcessor(me);
     
     // Stocker la position actuelle pour la détection "coincé"
     this.lastPosition = {...me.position};
+    
+    // Stocker le dernier état connu du serveur
+    this.lastServerState = me;
+    
+    // Incrémenter le compteur de synchronisation
+    this.serverSyncCounter++;
+    
+    // Forcer une synchronisation périodique avec le serveur
+    if (this.serverSyncCounter >= 100) { // Toutes les ~10 secondes (100 * 100ms)
+      this.serverSyncCounter = 0;
+      this.requestServerSync();
+    }
   }
   
   // Récupérer l'état actuel de notre bot dans l'état du jeu
   getMyState() {
     return this.gameState.players[this.id];
+  }
+  
+  // Nouvelle méthode pour demander explicitement une synchronisation
+  requestServerSync() {
+    this.emitAction(this.id, 'requestGameState', {});
+    console.log(`Bot ${this.id} requested server sync`);
+  }
+  
+  // Nettoyer les actions en attente expirées
+  cleanupPendingActions(currentTime) {
+    Object.keys(this.pendingActions).forEach(actionId => {
+      const action = this.pendingActions[actionId];
+      if (currentTime - action.timestamp > this.actionTimeout) {
+        console.log(`Action ${actionId} expired without response, retry logic triggered`);
+        
+        // Si c'était une action importante, la retenter
+        if (action.type === 'movement' || action.type === 'processorCollection') {
+          this.retryAction(action);
+        }
+        
+        // Supprimer l'action expirée
+        delete this.pendingActions[actionId];
+      }
+    });
+  }
+  
+  // Nouvelle méthode pour réessayer une action échouée
+  retryAction(action) {
+    // Pour l'instant, juste demander une synchronisation
+    this.requestServerSync();
+    
+    // Si trop d'échecs de mouvement, passer temporairement en mode aléatoire
+    if (action.type === 'movement') {
+      this.positionRejections++;
+      
+      if (this.positionRejections >= 3) {
+        console.log(`Bot ${this.id} has ${this.positionRejections} position rejections, switching to random movement`);
+        this.pathfindingMode = 'random';
+        this.randomMovement();
+        
+        // Réinitialiser après un délai
+        setTimeout(() => {
+          this.positionRejections = 0;
+          this.pathfindingMode = 'direct';
+        }, 3000);
+      }
+    }
   }
   
   // Mettre à jour la liste des obstacles
@@ -81,6 +150,19 @@ class ClaudeBot {
               radius: structure.type === 'waterTower' ? 6 : 2
             });
           }
+        }
+      });
+    }
+    
+    // Ajouter également les autres joueurs comme obstacles
+    if (this.gameState.players) {
+      Object.values(this.gameState.players).forEach(player => {
+        // Ne pas s'éviter soi-même
+        if (player.id !== this.id && player.isAlive) {
+          this.obstacles.push({
+            position: player.position,
+            radius: 1.5  // Rayon d'évitement pour les joueurs
+          });
         }
       });
     }
@@ -104,6 +186,9 @@ class ClaudeBot {
         // Passer en mode aléatoire pour s'échapper
         this.pathfindingMode = 'random';
         this.randomMovement();
+        
+        // Forcer une synchronisation avec le serveur
+        this.requestServerSync();
         
         // Revenir au mode direct après un délai
         setTimeout(() => {
@@ -143,12 +228,36 @@ class ClaudeBot {
     });
     
     if (closestProcessor) {
-      // On a trouvé un processeur, se déplacer vers lui en évitant les obstacles
-      this.moveTowardTarget(me, closestProcessor.position);
+      // Si on est assez proche, tenter de collecter le processeur
+      if (minDistance < 1.5) {
+        this.collectProcessor(closestProcessor.id);
+      } else {
+        // On a trouvé un processeur, se déplacer vers lui en évitant les obstacles
+        this.moveTowardTarget(me, closestProcessor.position);
+      }
     } else {
       // Aucun processeur accessible, se déplacer aléatoirement
       this.randomMovement();
     }
+  }
+  
+  // Nouvelle méthode pour collecter un processeur
+  collectProcessor(processorId) {
+    const actionId = `collect-${Date.now()}`;
+    
+    // Enregistrer l'action en attente
+    this.pendingActions[actionId] = {
+      type: 'processorCollection',
+      processorId: processorId,
+      timestamp: Date.now()
+    };
+    
+    // Émettre l'action de collecte
+    this.emitAction(this.id, 'processorCollected', {
+      processorId: processorId
+    });
+    
+    console.log(`Bot ${this.id} attempting to collect processor ${processorId}`);
   }
   
   // Se déplacer vers une cible en évitant les obstacles
@@ -340,6 +449,17 @@ class ClaudeBot {
     // Calculer l'angle de rotation
     const angle = Math.atan2(normalizedDirection.x, normalizedDirection.z);
     
+    // Générer un ID unique pour cette action de mouvement
+    const actionId = `move-${Date.now()}`;
+    
+    // Enregistrer l'action en attente
+    this.pendingActions[actionId] = {
+      type: 'movement',
+      direction: normalizedDirection,
+      rotation: angle,
+      timestamp: Date.now()
+    };
+    
     // Émettre le mouvement
     this.emitAction(this.id, 'playerUpdate', {
       direction: {
@@ -375,10 +495,60 @@ class ClaudeBot {
   
   // Gérer les actions reçues du serveur
   handleAction(action, data) {
-    // Gestion minimale des événements
-    if (action === 'playerKilled' && data.id === this.id) {
-      this.isAlive = false;
-      console.log(`Bot ${this.id} died`);
+    switch (action) {
+      case 'playerKilled':
+        if (data.id === this.id) {
+          this.isAlive = false;
+          console.log(`Bot ${this.id} died`);
+        }
+        break;
+        
+      case 'positionReset':
+        // Le serveur a rejeté notre position
+        this.positionRejections++;
+        console.log(`Bot ${this.id} position rejected by server (${this.positionRejections} times)`);
+        
+        // Si la position est rejetée trop souvent, passer temporairement en mode aléatoire
+        if (this.positionRejections >= 3) {
+          console.log(`Bot ${this.id} switching to random movement due to position rejections`);
+          this.pathfindingMode = 'random';
+          this.randomMovement();
+          
+          // Réinitialiser après un délai
+          setTimeout(() => {
+            this.positionRejections = 0;
+            this.pathfindingMode = 'direct';
+          }, 3000);
+        }
+        break;
+        
+      case 'gameState':
+        // Mise à jour de l'état du jeu
+        if (data.players && data.players[this.id]) {
+          // Mettre à jour notre état stocké
+          this.lastServerState = data.players[this.id];
+          console.log(`Bot ${this.id} received state sync from server`);
+        }
+        break;
+        
+      case 'processorRemoved':
+        // Un processeur a été supprimé (potentiellement collecté par nous)
+        // Rechercher et supprimer l'action en attente correspondante
+        Object.keys(this.pendingActions).forEach(actionId => {
+          const action = this.pendingActions[actionId];
+          if (action.type === 'processorCollection' && action.processorId === data.id) {
+            console.log(`Bot ${this.id} successfully collected processor ${data.id}`);
+            delete this.pendingActions[actionId];
+          }
+        });
+        break;
+        
+      case 'playerStatsUpdated':
+        // Nos statistiques ont été mises à jour (après collecte d'un processeur, etc.)
+        if (data.id === this.id) {
+          console.log(`Bot ${this.id} stats updated`);
+        }
+        break;
     }
   }
 }
