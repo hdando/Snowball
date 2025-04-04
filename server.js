@@ -341,7 +341,7 @@ function generateRandomPosition() {
   
   return {
     x: Math.cos(angle) * radius,
-    y: 0.5,  // Hauteur fixe
+    y: 0.1,  // Hauteur fixe
     z: Math.sin(angle) * radius
   };
 }
