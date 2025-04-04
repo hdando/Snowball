@@ -8,6 +8,8 @@ class BotManager {
     this.gameState = gameState;
     this.bots = [];
     this.botIds = {};
+    this.lastPositions = {}; // Pour suivre les positions précédentes des bots
+    this.stuckCounters = {}; // Pour suivre les bots potentiellement bloqués
   }
 
   loadBots() {	  
@@ -16,11 +18,14 @@ class BotManager {
     const botFiles = fs.readdirSync(botsFolder)
       .filter(file => file.endsWith('-bot.js'));
     
+    console.log("Fichiers de bots détectés:", botFiles);
+    
     botFiles.forEach(file => {
       try {
         const BotClass = require(path.join(botsFolder, file));
         const botName = file.replace('-bot.js', '').toUpperCase();
         this.bots.push({ name: botName, BotClass });
+        console.log(`Bot ${botName} chargé avec succès`);
       } catch (error) {
         console.error(`Failed to load bot: ${file}`, error);
       }
@@ -52,8 +57,10 @@ class BotManager {
         
         // Stocker l'instance du bot
         this.botIds[botId] = botInstance;
+        this.lastPositions[botId] = null;
+        this.stuckCounters[botId] = 0;
         
-        // Générer une position aléatoire comme un joueur normal
+        // Générer une position aléatoire pour le bot
         const position = this.generateRandomPosition();
         
         // Ajouter directement le bot à l'état du jeu
@@ -75,6 +82,9 @@ class BotManager {
           ...this.gameState.players[botId]
         });
         
+        // Ajouter le bot au système de collision
+        this.addBotToCollisionSystem(botId);
+        
         console.log(`Bot ${bot.name} créé avec l'ID: ${botId}`);
       } else {
         console.log(`Un bot de type ${bot.name} existe déjà, pas de nouvelle instance créée.`);
@@ -90,11 +100,35 @@ class BotManager {
     );
   }
   
-  // Implémentation simplifiée d'emitAction - action directe sur le jeu
+  // Méthode pour ajouter un bot au système de collision
+  addBotToCollisionSystem(botId) {
+    try {
+      if (!this.gameState.players[botId]) {
+        console.error(`Bot ${botId} non trouvé dans l'état du jeu, impossible d'ajouter au système de collision`);
+        return;
+      }
+      
+      // Envoyer un message spécial à tous les clients pour créer un collider pour ce bot
+      this.io.emit('createBotCollider', {
+        botId: botId,
+        position: this.gameState.players[botId].position,
+        rotation: this.gameState.players[botId].rotation,
+        username: this.gameState.players[botId].username
+      });
+      
+      console.log(`Bot ${botId} ajouté au système de collision`);
+    } catch (error) {
+      console.error(`Erreur lors de l'ajout du bot ${botId} au système de collision:`, error);
+    }
+  }
+  
+  // Implémentation d'emitAction - action directe sur le jeu
   emitAction(botId, event, data) {
-    console.log(`Bot ${botId} action: ${event}`);
+    if (Math.random() < 0.01) { // Réduire la fréquence des logs
+      console.log(`Bot ${botId} action: ${event}`);
+    }
     
-    // Traiter l'action directement sans passer par botRoom
+    // Traiter l'action directement
     switch (event) {
       case 'playerJoin':
         // S'assurer que le bot n'existe pas déjà
@@ -117,12 +151,16 @@ class BotManager {
             id: botId,
             ...this.gameState.players[botId]
           });
+          
+          // Ajouter au système de collision
+          this.addBotToCollisionSystem(botId);
         }
         break;
         
       case 'playerUpdate':
         // Mettre à jour directement le bot dans l'état du jeu
         if (this.gameState.players[botId]) {
+          // Mettre à jour la position et les autres propriétés
           Object.assign(this.gameState.players[botId], data);
           
           // Informer tous les clients de la mise à jour
@@ -202,20 +240,41 @@ class BotManager {
             // Incrémenter le compteur de processeurs
             player.stats.processorCounts[processor.type]++;
             
+            // Calculer le total de processeurs
+            const totalProcessors = Object.values(player.stats.processorCounts).reduce(
+              (sum, count) => sum + count, 0
+            );
+            
             // Supprimer le processeur du jeu
             delete this.gameState.processors[data.processorId];
             
             // Informer les clients
-            this.io.emit('processorRemoved', { id: data.processorId });
+            this.io.emit('processorRemoved', { 
+              id: data.processorId 
+            });
             
             // Informer de la mise à jour des stats
             this.io.emit('playerStatsUpdated', {
               id: botId,
               stats: player.stats,
               hp: player.hp,
-              maxHp: player.maxHp
+              maxHp: player.maxHp,
+              totalProcessors: totalProcessors
             });
           }
+        }
+        break;
+        
+      case 'cannonCollected':
+        // Traiter la collecte de canon
+        if (data.cannonId && this.gameState.cannons[data.cannonId]) {
+          // Supprimer le canon du jeu
+          delete this.gameState.cannons[data.cannonId];
+          
+          // Informer les clients
+          this.io.emit('cannonRemoved', { 
+            id: data.cannonId 
+          });
         }
         break;
     }
@@ -286,14 +345,13 @@ class BotManager {
           id: botId,
           ...this.gameState.players[botId]
         });
+        
+        // Ajouter au système de collision
+        this.addBotToCollisionSystem(botId);
       } else {
         botCount++;
       }
     });
-    
-    if (botCount > 0 && Math.random() < 0.1) { // Afficher seulement occasionnellement
-      console.log(`Mise à jour de ${botCount} bots actifs`);
-    }
     
     // Copie de l'état du jeu pour les bots
     const gameStateCopy = JSON.parse(JSON.stringify(this.gameState));
@@ -308,24 +366,66 @@ class BotManager {
         }
       }
     });
+    
+    // Vérifier si les bots sont bloqués (juste pour le log, pas d'action forcée)
+    Object.keys(this.botIds).forEach(botId => {
+      const bot = this.gameState.players[botId];
+      if (!bot || !bot.isAlive) return;
+      
+      // Vérifier si le bot a bougé depuis la dernière mise à jour
+      if (this.lastPositions[botId]) {
+        const lastPos = this.lastPositions[botId];
+        const currentPos = bot.position;
+        
+        // Calculer la distance parcourue
+        const distance = Math.sqrt(
+          Math.pow(currentPos.x - lastPos.x, 2) + 
+          Math.pow(currentPos.z - lastPos.z, 2)
+        );
+        
+        // Si la distance est très petite, le bot est peut-être bloqué
+        if (distance < 0.01) {
+          this.stuckCounters[botId]++;
+          
+          if (this.stuckCounters[botId] > 50 && this.stuckCounters[botId] % 50 === 0) {
+            console.log(`Bot ${botId} semble bloqué depuis un moment`);
+          }
+        } else {
+          // Réinitialiser le compteur s'il a bougé
+          this.stuckCounters[botId] = 0;
+        }
+      }
+      
+      // Stocker la position actuelle pour la prochaine vérification
+      this.lastPositions[botId] = {...bot.position};
+    });
   }
   
-  // Méthode inutile maintenant que nous n'utilisons plus botRoom
+  // Notification directe au bot
   handleBotAction(botId, action, data) {
-    // Redirection directe
     if (this.botIds[botId] && this.botIds[botId].handleAction) {
       this.botIds[botId].handleAction(action, data);
     }
+  }
+  
+  // Gérer la déconnexion d'un bot
+  handleBotDisconnect(botId) {
+    console.log(`Bot ${botId} déconnecté`);
+    // Ne pas supprimer de l'état du jeu, cela sera géré par cleanupBots si nécessaire
   }
   
   cleanupBots() {
     // Supprimer les bots de l'état du jeu
     Object.keys(this.botIds).forEach(botId => {
       delete this.gameState.players[botId];
+      delete this.lastPositions[botId];
+      delete this.stuckCounters[botId];
     });
     
     // Réinitialiser la liste des bots
     this.botIds = {};
+    
+    console.log("Tous les bots ont été nettoyés");
   }
 }
 
