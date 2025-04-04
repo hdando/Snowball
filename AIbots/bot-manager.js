@@ -88,7 +88,7 @@ class BotManager {
     
     return {
       x: Math.cos(angle) * radius,
-      y: 0.1,
+      y: 0,
       z: Math.sin(angle) * radius
     };
   }
