@@ -89,60 +89,52 @@ class ClaudeBot {
     this.targetType = targetType;
   }
   
-  moveTowardsTarget(botData) {
-    // If we have a target, move towards it
-    if (this.target) {
-      // Calculate direction vector
-      const dirX = this.target.position.x - botData.position.x;
-      const dirZ = this.target.position.z - botData.position.z;
-      
-      // Normalize direction
-      const length = Math.sqrt(dirX * dirX + dirZ * dirZ);
-      this.direction = {
-        x: dirX / length,
-        y: 0,
-        z: dirZ / length
-      };
-      
-      // Calculate rotation from direction
-      const rotation = Math.atan2(this.direction.x, this.direction.z);
-      
-      // Update position based on direction
-      const newPosition = {
-        x: botData.position.x + this.direction.x * botData.stats.speed * 50,
-        y: botData.position.y,
-        z: botData.position.z + this.direction.z * botData.stats.speed * 50
-      };
-      
-      // Send move update
-      this.emitAction(this.id, 'playerUpdate', {
-        position: newPosition,
-        rotation: rotation,
-        direction: this.direction
-      });
-    } else {
-      // Random movement if no target
-      const angle = Math.random() * Math.PI * 2;
-      this.direction = {
-        x: Math.sin(angle),
-        y: 0,
-        z: Math.cos(angle)
-      };
-      
-      const newPosition = {
-        x: botData.position.x + this.direction.x * botData.stats.speed * 50,
-        y: botData.position.y,
-        z: botData.position.z + this.direction.z * botData.stats.speed * 50
-      };
-      
-      this.emitAction(this.id, 'playerUpdate', {
-        position: newPosition,
-        rotation: angle,
-        direction: this.direction
-      });
-    }
-  }
-  
+	moveTowardsTarget(targetPosition) {
+	  // Vérifier si les positions sont définies
+	  if (!this.position || !targetPosition) return;
+	  
+	  // Calculer la direction vers la cible
+	  const direction = this.getDirectionTowards(targetPosition);
+	  
+	  // Mettre à jour la rotation et la direction
+	  const rotation = Math.atan2(direction.x, direction.z);
+	  this.emitAction('playerUpdate', {
+		rotation: rotation,
+		direction: direction
+	  });
+	  
+	  // Utiliser la vitesse des stats ou une valeur par défaut si non disponible
+	  const speed = (this.stats && typeof this.stats.speed === 'number') 
+		? this.stats.speed 
+		: 0.02;
+	  
+	  // Calculer la nouvelle position en se déplaçant vers la cible
+	  const newPosition = {
+		x: this.position.x + direction.x * speed,
+		y: 0.5, // Fixer la hauteur au niveau du sol
+		z: this.position.z + direction.z * speed
+	  };
+	  
+	  // Limiter le mouvement dans les limites de la carte
+	  const mapRadius = 98; // Légèrement inférieur à la limite de 100
+	  const distanceFromCenter = Math.sqrt(
+		newPosition.x * newPosition.x + 
+		newPosition.z * newPosition.z
+	  );
+	  
+	  // Si la position est en dehors des limites, ajuster
+	  if (distanceFromCenter > mapRadius) {
+		const scale = mapRadius / distanceFromCenter;
+		newPosition.x *= scale;
+		newPosition.z *= scale;
+	  }
+	  
+	  // Envoyer la mise à jour de position
+	  this.emitAction('playerUpdate', {
+		position: newPosition
+	  });
+	}
+
   attackNearbyPlayer(gameState, botData) {
     for (const id in gameState.players) {
       // Skip self
