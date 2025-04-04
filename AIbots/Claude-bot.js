@@ -33,6 +33,7 @@ class ClaudeBot {
   }
   
   update(gameState) {
+  update(gameState) {
     // Mettre à jour notre référence à l'état du jeu
     this.gameState = gameState;
     
@@ -436,40 +437,47 @@ class ClaudeBot {
     }
   }
   
-  // Se déplacer dans une direction donnée
-  moveInDirection(me, direction) {
-    // Normaliser la direction si ce n'est pas déjà fait
-    const magnitude = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
-    
-    const normalizedDirection = {
-      x: direction.x / magnitude,
-      z: direction.z / magnitude
-    };
-    
-    // Calculer l'angle de rotation
-    const angle = Math.atan2(normalizedDirection.x, normalizedDirection.z);
-    
-    // Générer un ID unique pour cette action de mouvement
-    const actionId = `move-${Date.now()}`;
-    
-    // Enregistrer l'action en attente
-    this.pendingActions[actionId] = {
-      type: 'movement',
-      direction: normalizedDirection,
-      rotation: angle,
-      timestamp: Date.now()
-    };
-    
-    // Émettre le mouvement
-    this.emitAction(this.id, 'playerUpdate', {
-      direction: {
-        x: normalizedDirection.x,
-        y: 0,
-        z: normalizedDirection.z
-      },
-      rotation: angle
-    });
-  }
+	// Se déplacer dans une direction donnée
+	moveInDirection(me, direction) {
+	  // Obtenir l'état actuel du bot si non fourni
+	  if (!me) {
+		me = this.getMyState();
+		if (!me) return; // Si on ne peut pas obtenir l'état, abandonner
+	  }
+	  
+	  // Normaliser la direction si ce n'est pas déjà fait
+	  const magnitude = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+	  
+	  const normalizedDirection = {
+		x: direction.x / magnitude,
+		z: direction.z / magnitude
+	  };
+	  
+	  // Calculer l'angle de rotation
+	  const angle = Math.atan2(normalizedDirection.x, normalizedDirection.z);
+	  
+	  // Calculer la nouvelle position en appliquant la vitesse
+	  const speed = me.stats?.speed || 0.02;
+	  const deltaTime = Date.now() - this.lastUpdateTime;
+	  const moveDistance = speed * (deltaTime / 16); // Normaliser par rapport à ~60 FPS
+	  
+	  const newPosition = {
+		x: me.position.x + normalizedDirection.x * moveDistance,
+		y: me.position.y, // Maintenir la même hauteur Y
+		z: me.position.z + normalizedDirection.z * moveDistance
+	  };
+	  
+	  // Émettre le mouvement avec la nouvelle position
+	  this.emitAction(this.id, 'playerUpdate', {
+		position: newPosition,
+		direction: {
+		  x: normalizedDirection.x,
+		  y: 0,
+		  z: normalizedDirection.z
+		},
+		rotation: angle
+	  });
+	}
   
   // Déplacement aléatoire
   randomMovement() {
