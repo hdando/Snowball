@@ -334,7 +334,7 @@
 				// Angles de rotation (en radians)
 				this.rotationHorizontal = Math.PI;  // Rotation horizontale autour du joueur (commence derrière)
 				this.rotationVertical = Math.PI / 6;  // Rotation verticale (inclinaison)
-				this.minVerticalRotation = 0.1;  // Limite pour ne pas passer sous le sol
+				this.minVerticalRotation = -0.2;  // Limite pour ne pas passer sous le sol
 				this.maxVerticalRotation = Math.PI / 2 - 0.1;  // Limite pour ne pas passer au-dessus
 				
 				// État de la souris
@@ -1836,12 +1836,12 @@
 				}
 			}
 			
-			// Méthode pour créer le collider (nouvelle méthode)
+			// Méthode pour créer le collider
 			createCollider() {
 				// Boîte de collision correspondant exactement au corps du robot
 				const colliderGeometry = new THREE.BoxGeometry(
 					this.bodyWidth + this.frameThickness,
-					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2)+ 0.3, //0.2 est la hauteur du canon?
+					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2)+ this.headHeight, 
 					this.bodyDepth
 				);
 				
@@ -1852,7 +1852,7 @@
 				});
 				
 				this.colliderMesh = new THREE.Mesh(colliderGeometry, colliderMaterial);
-				this.colliderMesh.position.y = 0.5; // Centré verticalement par rapport au robot
+				this.colliderMesh.position.y = (this.bodyHeight+ this.headHeight+0.4)/2; // Centré verticalement par rapport au robot
 				this.mesh.add(this.colliderMesh);
 				
 				// Définir le collider pour la détection de collision
@@ -3646,7 +3646,7 @@
 				cameraController.updateCamera(camera);
 			} else {
 				// Default camera position when no player exists
-				camera.position.set(0, 30, 30);
+				camera.position.set(0, 100, 0);
 				camera.lookAt(0, 0, 0); // Look at the center of the map
 			}
 		}
@@ -4260,7 +4260,7 @@
 			
 			// Si le joueur est hors du champ de vision ou trop loin de la caméra
 			if (Math.abs(tempVector.x) > 1.1 || Math.abs(tempVector.y) > 1.1 || 
-				tempVector.z > 1.1 || calculateDistanceToCamera(player.mesh.position) > 100) {
+				tempVector.z > 1.1 || calculateDistanceToCamera(player.mesh.position) > 150) {
 				player.nameTag.style.display = 'none';
 				return;
 			} else {
