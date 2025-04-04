@@ -77,7 +77,7 @@ const GameState = {
 
 // Configuration des durées (en millisecondes)
 const GAME_DURATION = 10 * 60 * 1000;  // 10 minutes
-const PODIUM_DURATION = 60 * 1000;     // 1 minute
+const PODIUM_DURATION = 30 * 1000;     // 30 secondes
 const RESTART_DURATION = 5 * 1000;     // 5 secondes pour le redémarrage
 
 // État actuel du jeu
