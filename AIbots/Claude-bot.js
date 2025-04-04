@@ -1,6 +1,7 @@
 // claude-bot.js
 class ClaudeBot {
   constructor(botId, io, gameState, emitAction) {
+	console.log(`Bot ${botId} created with position:`, gameState.players[botId]?.position);
     this.id = botId;
     this.io = io;
     this.gameState = gameState;
@@ -14,6 +15,7 @@ class ClaudeBot {
   }
 
   update(gameState) {
+	console.log(`Bot ${this.id} update, position:`, gameState.players[this.id]?.position);
     const now = Date.now();
     const botData = gameState.players[this.id];
     
