@@ -13,6 +13,12 @@ class BotManager {
     
     // Stockage d'état des touches pour chaque bot
     this.botInputs = {};
+    
+    // Intervalle de collecte automatique
+    this.collectionCheckInterval = null;
+    
+    // Suivi des canons latéraux pour chaque bot
+    this.botSideCannons = {};
   }
 
   loadBots() {	  
@@ -61,6 +67,7 @@ class BotManager {
         this.botInstances[botId] = botInstance;
         this.lastPositions[botId] = null;
         this.stuckCounters[botId] = 0;
+        this.botSideCannons[botId] = 0; // Initialiser à 0 canons latéraux
         
         // Initialiser les inputs du bot
         this.botInputs[botId] = {
@@ -102,6 +109,14 @@ class BotManager {
       }
     });
     
+    // Démarrer la vérification périodique pour la collecte de processeurs
+    if (!this.collectionCheckInterval) {
+      this.collectionCheckInterval = setInterval(() => {
+        this.checkProcessorCollection();
+        this.checkCannonCollection();
+      }, 200); // Vérifier toutes les 200ms
+    }
+    
     // Afficher les joueurs après le spawn pour vérification
     console.log("État du jeu après spawn des bots:", 
       Object.keys(this.gameState.players).map(id => ({
@@ -109,6 +124,167 @@ class BotManager {
         username: this.gameState.players[id].username
       }))
     );
+  }
+  
+  // Méthode pour vérifier si les bots peuvent collecter des processeurs
+  checkProcessorCollection() {
+    if (!this.gameState.processors) return;
+    
+    // Pour chaque bot
+    Object.keys(this.botInstances).forEach(botId => {
+      const bot = this.gameState.players[botId];
+      if (!bot || !bot.isAlive) return;
+      
+      // Pour chaque processeur, vérifier si le bot est assez proche
+      Object.entries(this.gameState.processors).forEach(([processorId, processor]) => {
+        // Calculer la distance
+        const distance = this.calculateDistance(bot.position, processor.position);
+        
+        // Distance de collecte (ajustée pour l'échelle du bot)
+        let collectDistance = 2;
+        if (bot.stats && bot.stats.processorCounts) {
+          const totalProcessors = Object.values(bot.stats.processorCounts)
+            .reduce((sum, count) => sum + count, 0);
+          collectDistance *= (1 + (totalProcessors * 0.005));
+        }
+        
+        // Si assez proche, déclencher la collecte
+        if (distance <= collectDistance) {
+          this.collectProcessor(botId, processorId, processor);
+        }
+      });
+    });
+  }
+  
+  // Méthode pour vérifier si les bots peuvent collecter des canons
+  checkCannonCollection() {
+    if (!this.gameState.cannons) return;
+    
+    // Pour chaque bot
+    Object.keys(this.botInstances).forEach(botId => {
+      const bot = this.gameState.players[botId];
+      if (!bot || !bot.isAlive) return;
+      
+      // Pour chaque canon, vérifier si le bot est assez proche
+      Object.entries(this.gameState.cannons).forEach(([cannonId, cannon]) => {
+        // Calculer la distance
+        const distance = this.calculateDistance(bot.position, cannon.position);
+        
+        // Distance de collecte (ajustée pour l'échelle du bot)
+        let collectDistance = 2;
+        if (bot.stats && bot.stats.processorCounts) {
+          const totalProcessors = Object.values(bot.stats.processorCounts)
+            .reduce((sum, count) => sum + count, 0);
+          collectDistance *= (1 + (totalProcessors * 0.005));
+        }
+        
+        // Si assez proche, déclencher la collecte
+        if (distance <= collectDistance) {
+          this.collectCannon(botId, cannonId, cannon);
+        }
+      });
+    });
+  }
+  
+  // Méthode pour collecter un canon par un bot
+  collectCannon(botId, cannonId, cannon) {
+    const bot = this.gameState.players[botId];
+    if (!bot) return;
+    
+    // Limiter le nombre de canons latéraux (comme pour les joueurs)
+    const maxSideCannons = 4;
+    if (this.botSideCannons[botId] >= maxSideCannons) {
+      return; // Ne pas collecter plus de canons que la limite
+    }
+    
+    // Supprimer le canon de l'état du jeu
+    delete this.gameState.cannons[cannonId];
+    
+    // Informer tous les clients
+    this.io.emit('cannonRemoved', {
+      id: cannonId
+    });
+    
+    // Incrémenter le compteur de canons pour ce bot
+    this.botSideCannons[botId]++;
+    
+    // Notifier les bots de la collecte
+    this.notifyBots('cannonCollected', {
+      id: cannonId,
+      playerId: botId
+    });
+    
+    console.log(`Bot ${botId} a collecté un canon latéral (total: ${this.botSideCannons[botId]})`);
+  }
+  
+  // Méthode pour collecter un processeur par un bot
+  collectProcessor(botId, processorId, processor) {
+    const bot = this.gameState.players[botId];
+    if (!bot || !processor) return;
+    
+    // Supprimer le processeur de l'état du jeu
+    delete this.gameState.processors[processorId];
+    
+    // Informer tous les clients
+    this.io.emit('processorRemoved', {
+      id: processorId
+    });
+    
+    // Mettre à jour les stats du bot
+    if (!bot.stats) {
+      bot.stats = this.getDefaultPlayerStats();
+    }
+    
+    if (!bot.stats.processorCounts) {
+      bot.stats.processorCounts = {
+        hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
+        range: 0, speed: 0, repairSpeed: 0
+      };
+    }
+    
+    // Appliquer le boost selon le type
+    const processorType = processor.type;
+    const boostValue = processor.boost;
+    
+    switch(processorType) {
+      case 'hp':
+        bot.maxHp += boostValue;
+        bot.hp += boostValue;
+        break;
+      case 'resistance':
+      case 'attack':
+      case 'attackSpeed':
+      case 'range':
+      case 'speed': 
+      case 'repairSpeed':
+        bot.stats[processorType] += boostValue;
+        break;
+    }
+    
+    // Incrémenter le compteur
+    bot.stats.processorCounts[processorType]++;
+    
+    // Calculer le total des processeurs
+    const totalProcessors = Object.values(bot.stats.processorCounts)
+      .reduce((sum, count) => sum + count, 0);
+    
+    // Diffuser la mise à jour des stats
+    this.io.emit('playerStatsUpdated', {
+      id: botId,
+      stats: bot.stats,
+      hp: bot.hp,
+      maxHp: bot.maxHp,
+      totalProcessors: totalProcessors
+    });
+    
+    // Notifier les bots de la collecte
+    this.notifyBots('processorCollected', {
+      id: processorId,
+      type: processorType,
+      playerId: botId
+    });
+    
+    console.log(`Bot ${botId} a collecté un processeur de type ${processorType}`);
   }
   
   // Méthode pour recevoir les inputs d'un bot et les stocker
@@ -141,7 +317,8 @@ class BotManager {
         botId: botId,
         position: this.gameState.players[botId].position,
         rotation: this.gameState.players[botId].rotation,
-        username: this.gameState.players[botId].username
+        username: this.gameState.players[botId].username,
+        hasCollision: true  // Assurer que la collision est activée
       });
       
       console.log(`Bot ${botId} ajouté au système de collision`);
@@ -159,7 +336,7 @@ class BotManager {
     
     return {
       x: Math.cos(angle) * radius,
-      y: 0,
+      y: 0,  // Hauteur au sol (sera ajustée pour les projectiles)
       z: Math.sin(angle) * radius
     };
   }
@@ -322,13 +499,80 @@ class BotManager {
     // Créer l'ID du projectile
     const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
-    // Position du projectile (devant le bot)
-    const spawnDistance = 0.5; // Distance à laquelle le projectile apparaît devant le bot
-    const projectilePosition = {
-      x: bot.position.x + bot.direction.x * spawnDistance,
-      y: bot.position.y,
-      z: bot.position.z + bot.direction.z * spawnDistance
-    };
+    // Calculer l'échelle du bot basée sur le nombre de processeurs collectés
+    let botScale = 1.0;
+    if (bot.stats && bot.stats.processorCounts) {
+      const totalProcessors = Object.values(bot.stats.processorCounts)
+        .reduce((sum, count) => sum + count, 0);
+      botScale = 1.0 + (totalProcessors * 0.005); // 0.5% par processeur
+    }
+    
+    // Déterminer si on utilise le canon principal ou un canon latéral
+    const sideCannonCount = this.botSideCannons[botId] || 0;
+    const useSideCannon = Math.random() > 0.7 && sideCannonCount > 0;
+    let projectilePosition;
+    
+    if (useSideCannon) {
+      // Position pour les canons latéraux
+      // Simuler les positions des canons latéraux comme dans index.html
+      
+      // Choisir aléatoirement un canon gauche ou droit
+      const isLeftSide = Math.random() > 0.5;
+      // Choisir aléatoirement une rangée (0 ou 1)
+      const rowIndex = Math.floor(Math.random() * Math.min(2, sideCannonCount / 2));
+      
+      // Reproduire les calculs de position des canons latéraux
+      const xOffset = (isLeftSide ? -0.25 : 0.25) * botScale;
+      const yOffset = (0.9 - (rowIndex * 0.45)) * botScale;
+      const zOffset = -0.2 * botScale;
+      
+      // Position du bout du canon latéral
+      const localBarrelZ = -0.12; // Longueur approximative du canon
+      
+      // Position dans l'espace 3D
+      const headHeight = 1.3 * botScale; // Hauteur de la tête du robot
+      const worldY = bot.position.y + headHeight + yOffset;
+      
+      // Calculer la position mondiale en tenant compte de la rotation du bot
+      const cosAngle = Math.cos(bot.rotation);
+      const sinAngle = Math.sin(bot.rotation);
+      
+      // Composante X (latérale)
+      const worldX = bot.position.x + 
+                    (xOffset * cosAngle) + 
+                    ((zOffset + localBarrelZ) * sinAngle);
+      
+      // Composante Z (avant/arrière)
+      const worldZ = bot.position.z + 
+                    (xOffset * sinAngle) - 
+                    ((zOffset + localBarrelZ) * cosAngle);
+      
+      projectilePosition = {
+        x: worldX,
+        y: worldY,
+        z: worldZ
+      };
+    } else {
+      // Position pour le canon principal
+      // Simuler la position du canon principal comme dans index.html
+      
+      // Hauteur de la tête du robot
+      const headHeight = 1.3 * botScale;
+      
+      // Position du bout du canon (valeur négative car orienté vers l'avant)
+      const barrelTipZ = -0.7 * botScale;
+      
+      // Calculer la position mondiale en tenant compte de la rotation du bot
+      const worldY = bot.position.y + headHeight;
+      const worldX = bot.position.x + (barrelTipZ * Math.sin(bot.rotation));
+      const worldZ = bot.position.z + (barrelTipZ * Math.cos(bot.rotation));
+      
+      projectilePosition = {
+        x: worldX,
+        y: worldY,
+        z: worldZ
+      };
+    }
     
     // Ajouter le projectile à l'état du jeu
     this.gameState.projectiles[projectileId] = {
@@ -350,6 +594,15 @@ class BotManager {
       damage: bot.stats?.attack || 10,
       range: bot.stats?.range || 10
     });
+  }
+  
+  // Calculer la distance entre deux positions
+  calculateDistance(pos1, pos2) {
+    if (!pos1 || !pos2) return Infinity;
+    return Math.sqrt(
+      Math.pow(pos2.x - pos1.x, 2) +
+      Math.pow(pos2.z - pos1.z, 2)
+    );
   }
   
   // Vérifier si des bots sont bloqués
@@ -442,12 +695,19 @@ class BotManager {
   }
   
   cleanupBots() {
+    // Arrêter l'intervalle de vérification de collecte
+    if (this.collectionCheckInterval) {
+      clearInterval(this.collectionCheckInterval);
+      this.collectionCheckInterval = null;
+    }
+    
     // Supprimer les bots de l'état du jeu
     Object.keys(this.botInstances).forEach(botId => {
       delete this.gameState.players[botId];
       delete this.lastPositions[botId];
       delete this.stuckCounters[botId];
       delete this.botInputs[botId];
+      delete this.botSideCannons[botId];
     });
     
     // Réinitialiser la liste des bots
