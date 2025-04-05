@@ -1,4 +1,4 @@
-class ClaudeBot {
+class SimpleBot {
   constructor(botId, gameState, sendInputs) {
     // Propriétés de base
     this.id = botId;
@@ -7,47 +7,26 @@ class ClaudeBot {
     
     // État du bot
     this.lastUpdateTime = Date.now();
-    this.updateInterval = 100; // milliseconds
+    this.updateInterval = 100; // millisecondes
     this.isAlive = true;
+    
+    // Paramètres de comportement
+    this.shootCooldown = 3000; // 3 secondes entre les tirs
     this.lastShootTime = 0;
-    this.shootCooldown = 2000; // ms entre les tirs
+    this.randomMoveTime = 0; // Temps pendant lequel faire des mouvements aléatoires
+    this.randomMoveDirection = { left: false, right: false };
     
-    // Gestion des obstacles
-    this.obstacles = [];
-    this.avoidanceRadius = 3; // Distance à maintenir avec les obstacles
-    this.lastPosition = null;
-    
-    // Paramètres de déplacement
-    this.currentTarget = null;
-    this.pathfindingMode = 'direct'; // 'direct', 'detour', ou 'random'
-    this.randomModeEndTime = 0; // Temps de fin du mode aléatoire
-    this.randomChangeInterval = 500; // ms entre les changements de direction aléatoires
-    this.lastRandomChange = 0;
-    
-    // Comportement de collecte
-    this.collectRadius = 1.5; // Rayon pour considérer un objet comme collecté
-    this.lastProcessorId = null; // Dernier processeur ciblé
-    
-    console.log(`ClaudeBot initialized with new input system with ID: ${this.id}`);
+    console.log(`SimpleBot initialized with ID: ${this.id}`);
   }
   
   update(gameState) {
     // Mettre à jour notre référence à l'état du jeu
     this.gameState = gameState;
     
-    // Calculer le delta de temps
-    const currentTime = Date.now();
-    const deltaTime = currentTime - this.lastUpdateTime;
-    this.lastUpdateTime = currentTime;
-    
-    // Ne prendre des décisions qu'à des intervalles spécifiques pour éviter le spam
-    if (deltaTime < this.updateInterval) return;
-    
     // Obtenir l'état actuel de notre bot
     const me = this.getMyState();
     if (!me || !me.isAlive) {
-      this.isAlive = me ? me.isAlive : false;
-      // Envoyer des inputs nuls si on est mort
+      // Si le bot est mort, n'envoyer aucun input
       this.sendInputs({
         forward: false,
         backward: false,
@@ -58,114 +37,65 @@ class ClaudeBot {
       return;
     }
     
-    // Mettre à jour l'état "vivant"
-    this.isAlive = true;
+    const currentTime = Date.now();
     
-    // Mettre à jour la liste des obstacles
-    this.updateObstacles();
+    // Décider si on tire (tous les X secondes)
+    const shouldFire = currentTime - this.lastShootTime > this.shootCooldown;
+    if (shouldFire) {
+      this.lastShootTime = currentTime;
+    }
     
-    // Déterminer les inputs en fonction de la stratégie actuelle
-    let inputs;
+    // Si on est en mode mouvement aléatoire (après collision)
+    if (currentTime < this.randomMoveTime) {
+      this.sendRandomMovement(shouldFire);
+      return;
+    }
     
-    // Vérifier si on est en mode aléatoire temporaire
-    if (this.pathfindingMode === 'random' && currentTime < this.randomModeEndTime) {
-      inputs = this.getRandomInputs(currentTime);
+    // Logique principale : Trouver le processeur le plus proche et se diriger vers lui
+    const closestProcessor = this.findClosestProcessor(me.position);
+    
+    if (closestProcessor) {
+      // On a trouvé un processeur, se diriger vers lui
+      this.moveTowardsTarget(me, closestProcessor.position, shouldFire);
     } else {
-      // Mode normal - chercher et collecter des processeurs
-      this.pathfindingMode = 'direct';
-      inputs = this.getInputsForProcessorCollection(me, currentTime);
+      // Aucun processeur trouvé, faire un mouvement aléatoire
+      this.sendRandomMovement(shouldFire);
     }
-    
-    // Envoyer les inputs au gestionnaire de bot
-    this.sendInputs(inputs);
-    
-    // Stocker la position actuelle pour la prochaine mise à jour
-    this.lastPosition = {...me.position};
   }
   
-  // Obtenir des inputs aléatoires pour sortir d'une situation bloquée
-  getRandomInputs(currentTime) {
-    // Changer les inputs aléatoirement à intervalles réguliers
-    if (currentTime - this.lastRandomChange > this.randomChangeInterval) {
-      this.lastRandomChange = currentTime;
-      
-      // Générer des inputs aléatoires
-      const randomInputs = {
-        forward: Math.random() > 0.3, // Favoriser le mouvement avant
-        backward: Math.random() > 0.7, // Moins souvent en arrière
-        left: Math.random() > 0.5,
-        right: Math.random() > 0.5,
-        fire: Math.random() > 0.9 // Tirer occasionnellement
-      };
-      
-      // Éviter d'activer à la fois gauche et droite ou avant et arrière
-      if (randomInputs.left && randomInputs.right) {
-        randomInputs.right = false;
-      }
-      if (randomInputs.forward && randomInputs.backward) {
-        randomInputs.backward = false;
-      }
-      
-      return randomInputs;
-    }
-    
-    // Si pas de changement prévu, conserver les inputs précédents (ils seront définis par le BotManager)
-    return {
-      forward: true, // Par défaut, continuer d'avancer en mode aléatoire
-      backward: false,
-      left: Math.random() > 0.5, // Changer aléatoirement la direction
-      right: Math.random() > 0.5,
-      fire: false
-    };
+  // Récupérer l'état actuel du bot
+  getMyState() {
+    return this.gameState.players[this.id];
   }
   
-  // Déterminer les inputs pour collecter le processeur le plus proche
-  getInputsForProcessorCollection(me, currentTime) {
-    // Obtenir tous les processeurs du jeu
-    const processors = Object.values(this.gameState.processors);
+  // Trouver le processeur le plus proche
+  findClosestProcessor(position) {
+    const processors = Object.values(this.gameState.processors || {});
+    
     if (processors.length === 0) {
-      // Aucun processeur trouvé, se déplacer aléatoirement
-      this.switchToRandomMode(currentTime, 2000); // Mode aléatoire pendant 2 secondes
-      return this.getRandomInputs(currentTime);
+      return null;
     }
     
-    // Trouver le processeur le plus proche
-    let closestProcessor = null;
+    let closest = null;
     let minDistance = Infinity;
     
     processors.forEach(processor => {
-      const distance = this.calculateDistance(me.position, processor.position);
+      const distance = this.calculateDistance(position, processor.position);
       if (distance < minDistance) {
         minDistance = distance;
-        closestProcessor = processor;
+        closest = processor;
       }
     });
     
-    // Si on est assez proche du processeur, considérer qu'on l'a collecté
-    if (minDistance < this.collectRadius) {
-      // Continuer à avancer pour s'assurer de collecter le processeur
-      return {
-        forward: true,
-        backward: false,
-        left: false,
-        right: false,
-        fire: false
-      };
-    }
-    
-    // Vérifier s'il y a des obstacles sur le chemin direct
-    const hasObstacle = this.checkForObstacles(me.position, closestProcessor.position);
-    
-    // Si on rencontre un obstacle et qu'on n'est pas déjà en mode de contournement, passer en mode aléatoire
-    if (hasObstacle && this.pathfindingMode === 'direct') {
-      this.switchToRandomMode(currentTime, 1000); // Mode aléatoire pendant 1 seconde
-      return this.getRandomInputs(currentTime);
-    }
-    
-    // Calculer l'angle vers le processeur
+    return closest;
+  }
+  
+  // Se déplacer vers une cible
+  moveTowardsTarget(me, targetPosition, shouldFire) {
+    // Calculer l'angle vers la cible
     const targetAngle = Math.atan2(
-      closestProcessor.position.x - me.position.x,
-      closestProcessor.position.z - me.position.z
+      targetPosition.x - me.position.x,
+      targetPosition.z - me.position.z
     );
     
     // Angle actuel du bot
@@ -176,139 +106,141 @@ class ClaudeBot {
     while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
     while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
     
-    // Déterminer s'il faut tourner à gauche ou à droite
-    const turnLeft = angleDiff > 0;
-    const turnRight = angleDiff < 0;
+    // Tolérance d'angle pour avancer
+    const angleTolerance = 0.3; // environ 17 degrés
     
-    // Précision angulaire (à quel point on peut être désaligné et continuer d'avancer)
-    const anglePrecision = 0.3; // environ 17 degrés
+    // Vérifier si un obstacle est sur le chemin
+    const hasObstacle = this.checkForObstacle(me, targetPosition);
     
-    // Si l'angle est suffisamment précis, avancer; sinon, tourner seulement
-    const shouldMove = Math.abs(angleDiff) < anglePrecision;
-    
-    // Décider s'il faut tirer (en fonction du cooldown)
-    const shouldFire = currentTime - this.lastShootTime > this.shootCooldown;
-    if (shouldFire) {
-      this.lastShootTime = currentTime;
+    if (hasObstacle) {
+      // Si obstacle, activer le mode mouvement aléatoire pendant 2 secondes
+      this.randomMoveTime = Date.now() + 2000;
+      this.sendRandomMovement(shouldFire);
+      return;
     }
     
-    return {
-      forward: shouldMove,
+    // Envoyer les inputs en fonction de la position relative
+    this.sendInputs({
+      forward: Math.abs(angleDiff) < angleTolerance, // Avancer si l'angle est assez précis
       backward: false,
-      left: turnLeft,
-      right: turnRight,
+      left: angleDiff > 0,  // Tourner à gauche si la cible est à gauche
+      right: angleDiff < 0, // Tourner à droite si la cible est à droite
       fire: shouldFire
+    });
+  }
+  
+  // Vérification simple d'obstacle
+  checkForObstacle(me, targetPosition) {
+    // Simplification : vérifier uniquement s'il y a un joueur ou une structure proche
+    // sur le chemin direct vers la cible
+    
+    const direction = {
+      x: targetPosition.x - me.position.x,
+      z: targetPosition.z - me.position.z
     };
-  }
-  
-  // Passer en mode de déplacement aléatoire
-  switchToRandomMode(currentTime, duration) {
-    this.pathfindingMode = 'random';
-    this.randomModeEndTime = currentTime + duration;
-    this.lastRandomChange = currentTime;
-  }
-  
-  // Récupérer l'état actuel de notre bot dans l'état du jeu
-  getMyState() {
-    return this.gameState.players[this.id];
-  }
-  
-  // Mettre à jour la liste des obstacles
-  updateObstacles() {
-    this.obstacles = [];
     
-    // Ajouter les structures statiques comme obstacles
-    if (this.gameState.structures) {
-      Object.values(this.gameState.structures).forEach(structure => {
-        if (structure.type === 'waterTower' || structure.type === 'tree') {
-          // Ignorer les structures détruites
-          if (!structure.destroyed) {
-            this.obstacles.push({
-              position: structure.position,
-              // Rayon plus grand pour le château d'eau, plus petit pour les arbres
-              radius: structure.type === 'waterTower' ? 6 : 2
-            });
-          }
-        }
-      });
-    }
+    // Normaliser la direction
+    const distance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+    if (distance === 0) return false;
     
-    // Ajouter les autres joueurs comme obstacles (sauf nous-mêmes)
-    if (this.gameState.players) {
-      Object.values(this.gameState.players).forEach(player => {
-        if (player.id !== this.id && player.isAlive) {
-          this.obstacles.push({
-            position: player.position,
-            radius: 1.5 // Rayon approximatif d'un joueur
-          });
-        }
-      });
-    }
-  }
-  
-  // Vérifier s'il y a des obstacles entre deux points
-  checkForObstacles(start, end) {
-    const direction = this.getDirectionToTarget(start, end);
-    const distance = this.calculateDistance(start, end);
+    direction.x /= distance;
+    direction.z /= distance;
     
-    for (const obstacle of this.obstacles) {
-      // Calculer le vecteur du début à l'obstacle
-      const obstacleVector = {
-        x: obstacle.position.x - start.x,
-        z: obstacle.position.z - start.z
+    // Vérifier les autres joueurs
+    for (const playerId in this.gameState.players) {
+      if (playerId === this.id) continue; // Ignorer soi-même
+      
+      const player = this.gameState.players[playerId];
+      if (!player.isAlive) continue; // Ignorer les joueurs morts
+      
+      // Vecteur du bot à l'autre joueur
+      const toPlayer = {
+        x: player.position.x - me.position.x,
+        z: player.position.z - me.position.z
       };
       
-      // Calculer le produit scalaire
-      const dotProduct = direction.x * obstacleVector.x + direction.z * obstacleVector.z;
+      // Distance au joueur
+      const playerDist = Math.sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
+      if (playerDist > distance) continue; // Le joueur est plus loin que la cible
       
-      // Ne considérer que les obstacles devant nous
-      if (dotProduct <= 0) continue;
+      // Projection du vecteur joueur sur la direction
+      const dot = toPlayer.x * direction.x + toPlayer.z * direction.z;
+      if (dot <= 0) continue; // Le joueur est derrière nous
       
-      // Calculer le point le plus proche sur la ligne
-      const projectionLength = Math.min(dotProduct, distance);
+      // Distance du joueur à la ligne de vue
+      const projX = direction.x * dot;
+      const projZ = direction.z * dot;
+      const perpX = toPlayer.x - projX;
+      const perpZ = toPlayer.z - projZ;
+      const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
       
-      const closestPoint = {
-        x: start.x + direction.x * projectionLength,
-        z: start.z + direction.z * projectionLength
+      if (perpDist < 1.5) return true; // Obstacle détecté
+    }
+    
+    // Vérifier les structures (simplification)
+    for (const structureId in this.gameState.structures) {
+      const structure = this.gameState.structures[structureId];
+      if (structure.destroyed) continue; // Ignorer les structures détruites
+      
+      // Vecteur du bot à la structure
+      const toStructure = {
+        x: structure.position.x - me.position.x,
+        z: structure.position.z - me.position.z
       };
       
-      // Calculer la distance du point le plus proche à l'obstacle
-      const obstacleDistance = Math.sqrt(
-        Math.pow(closestPoint.x - obstacle.position.x, 2) +
-        Math.pow(closestPoint.z - obstacle.position.z, 2)
-      );
+      // Distance à la structure
+      const structDist = Math.sqrt(toStructure.x * toStructure.x + toStructure.z * toStructure.z);
+      if (structDist > distance) continue; // La structure est plus loin que la cible
       
-      // Si la distance est inférieure au rayon de l'obstacle, alors la ligne intersecte l'obstacle
-      if (obstacleDistance < obstacle.radius + 0.5) {
-        return true;
-      }
+      // Projection du vecteur structure sur la direction
+      const dot = toStructure.x * direction.x + toStructure.z * direction.z;
+      if (dot <= 0) continue; // La structure est derrière nous
+      
+      // Distance de la structure à la ligne de vue
+      const projX = direction.x * dot;
+      const projZ = direction.z * dot;
+      const perpX = toStructure.x - projX;
+      const perpZ = toStructure.z - projZ;
+      const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
+      
+      // Rayon de collision différent selon le type
+      const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
+      
+      if (perpDist < collisionRadius) return true; // Obstacle détecté
     }
     
     return false;
   }
   
-  // Calculer la direction du point de départ vers la cible
-  getDirectionToTarget(start, target) {
-    // Calculer le vecteur du départ vers la cible
-    const vecX = target.x - start.x;
-    const vecZ = target.z - start.z;
-    
-    // Calculer la magnitude
-    const magnitude = Math.sqrt(vecX * vecX + vecZ * vecZ);
-    
-    // Normaliser le vecteur
-    if (magnitude > 0) {
-      return {
-        x: vecX / magnitude,
-        z: vecZ / magnitude
+  // Envoyer un mouvement aléatoire
+  sendRandomMovement(shouldFire) {
+    // Si nous n'avons pas encore choisi de direction aléatoire ou si c'est le moment de changer
+    if (!this.randomMoveDirection.set || Math.random() < 0.05) {
+      this.randomMoveDirection = {
+        forward: Math.random() > 0.3, // 70% de chance d'avancer
+        backward: false,
+        left: Math.random() > 0.5, // 50% de chance de tourner à gauche
+        right: Math.random() < 0.5, // 50% de chance de tourner à droite
+        set: true
       };
-    } else {
-      // Direction par défaut si le départ et la cible sont identiques
-      return { x: 1, z: 0 };
+      
+      // Éviter de tourner à gauche et à droite en même temps
+      if (this.randomMoveDirection.left && this.randomMoveDirection.right) {
+        this.randomMoveDirection.right = false;
+      }
     }
+    
+    // Envoyer les inputs aléatoires
+    this.sendInputs({
+      forward: this.randomMoveDirection.forward,
+      backward: this.randomMoveDirection.backward,
+      left: this.randomMoveDirection.left,
+      right: this.randomMoveDirection.right,
+      fire: shouldFire
+    });
   }
   
-  // Calculer la distance entre deux points
+  // Calcule la distance entre deux points
   calculateDistance(a, b) {
     return Math.sqrt(
       Math.pow(b.x - a.x, 2) +
@@ -316,29 +248,26 @@ class ClaudeBot {
     );
   }
   
-  // Gérer les événements envoyés par le serveur
+  // Traiter les événements du jeu
   handleEvent(event, data) {
-    switch (event) {
-      case 'playerKilled':
-        if (data.id === this.id) {
-          this.isAlive = false;
-          console.log(`Bot ${this.id} died`);
-        }
-        break;
-      case 'playerDamaged':
-        if (data.id === this.id) {
-          // Eventuellement, on pourrait ajuster notre stratégie quand on est touché
-          // Par exemple fuir si on est à faible vie
-        }
-        break;
-      case 'processorCollected':
-        if (data.processorId === this.lastProcessorId) {
-          // Réinitialiser notre cible actuelle
-          this.lastProcessorId = null;
-        }
-        break;
+    // Réagir lorsqu'on est touché
+    if (event === 'playerDamaged' && data.id === this.id) {
+      // Si on prend des dégâts, entrer en mode mouvement aléatoire pendant 1 seconde
+      this.randomMoveTime = Date.now() + 1000;
+      // Réinitialiser la direction aléatoire pour une nouvelle
+      this.randomMoveDirection.set = false;
+    }
+    
+    // Réagir lorsqu'on est tué
+    if (event === 'playerKilled' && data.id === this.id) {
+      this.isAlive = false;
+    }
+    
+    // Si un processeur est collecté, réinitialiser le mode mouvement
+    if (event === 'processorCollected') {
+      this.randomMoveTime = 0;
     }
   }
 }
 
-module.exports = ClaudeBot;
+module.exports = SimpleBot;
