@@ -145,7 +145,7 @@ class BotManager {
         if (bot.stats && bot.stats.processorCounts) {
           const totalProcessors = Object.values(bot.stats.processorCounts)
             .reduce((sum, count) => sum + count, 0);
-          collectDistance *= (1 + (totalProcessors * 0.005));
+          collectDistance *= (0.9 + (totalProcessors * 0.005));
         }
         
         // Si assez proche, déclencher la collecte
@@ -175,7 +175,7 @@ class BotManager {
         if (bot.stats && bot.stats.processorCounts) {
           const totalProcessors = Object.values(bot.stats.processorCounts)
             .reduce((sum, count) => sum + count, 0);
-          collectDistance *= (1 + (totalProcessors * 0.005));
+          collectDistance *= (0.9 + (totalProcessors * 0.005));
         }
         
         // Si assez proche, déclencher la collecte
@@ -420,7 +420,7 @@ class BotManager {
       if (!bot || !bot.isAlive) return;
       
       // Récupérer les stats du bot
-      const botSpeed = bot.stats?.speed || 0.02;
+      const botSpeed = bot.stats?.speed || 0.04;
       const botRotationSpeed = 0.02; // Même vitesse de rotation que les joueurs
       
       // Calculer les nouvelles position et rotation
