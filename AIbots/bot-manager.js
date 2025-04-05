@@ -7,9 +7,12 @@ class BotManager {
     this.io = io;
     this.gameState = gameState;
     this.bots = [];
-    this.botIds = {};
+    this.botInstances = {};
     this.lastPositions = {}; // Pour suivre les positions précédentes des bots
     this.stuckCounters = {}; // Pour suivre les bots potentiellement bloqués
+    
+    // Stockage d'état des touches pour chaque bot
+    this.botInputs = {};
   }
 
   loadBots() {	  
@@ -38,7 +41,7 @@ class BotManager {
     // Pour chaque type de bot disponible
     this.bots.forEach(bot => {
       // Vérifier combien d'instances de ce type de bot existent déjà
-      const existingBots = Object.values(this.botIds).filter(
+      const existingBots = Object.values(this.botInstances).filter(
         instance => instance.constructor.name === bot.BotClass.name
       );
       
@@ -47,18 +50,26 @@ class BotManager {
         // Générer un ID unique pour ce bot
         const botId = `bot-${bot.name}-${uuidv4().substring(0, 8)}`;
         
-        // Créer une instance du bot
+        // Créer une instance du bot avec le nouveau système d'inputs
         const botInstance = new bot.BotClass(
           botId,
-          this.io,
           this.gameState,
-          this.emitAction.bind(this)
+          this.sendInputs.bind(this, botId)
         );
         
         // Stocker l'instance du bot
-        this.botIds[botId] = botInstance;
+        this.botInstances[botId] = botInstance;
         this.lastPositions[botId] = null;
         this.stuckCounters[botId] = 0;
+        
+        // Initialiser les inputs du bot
+        this.botInputs[botId] = {
+          forward: false,
+          backward: false,
+          left: false,
+          right: false,
+          fire: false
+        };
         
         // Générer une position aléatoire pour le bot
         const position = this.generateRandomPosition();
@@ -100,6 +111,23 @@ class BotManager {
     );
   }
   
+  // Méthode pour recevoir les inputs d'un bot et les stocker
+  sendInputs(botId, inputs) {
+    // Valider l'existence du bot
+    if (!this.botInstances[botId] || !this.gameState.players[botId]) {
+      return;
+    }
+    
+    // Actualiser les inputs du bot
+    this.botInputs[botId] = {
+      forward: !!inputs.forward,
+      backward: !!inputs.backward,
+      left: !!inputs.left,
+      right: !!inputs.right,
+      fire: !!inputs.fire
+    };
+  }
+  
   // Méthode pour ajouter un bot au système de collision
   addBotToCollisionSystem(botId) {
     try {
@@ -119,169 +147,6 @@ class BotManager {
       console.log(`Bot ${botId} ajouté au système de collision`);
     } catch (error) {
       console.error(`Erreur lors de l'ajout du bot ${botId} au système de collision:`, error);
-    }
-  }
-  
-  // Implémentation d'emitAction - action directe sur le jeu
-  emitAction(botId, event, data) {
-    if (Math.random() < 0.01) { // Réduire la fréquence des logs
-      console.log(`Bot ${botId} action: ${event}`);
-    }
-    
-    // Traiter l'action directement
-    switch (event) {
-      case 'playerJoin':
-        // S'assurer que le bot n'existe pas déjà
-        if (!this.gameState.players[botId]) {
-          console.log(`Ajout direct du bot ${botId} à l'état du jeu`);
-          this.gameState.players[botId] = {
-            id: botId,
-            position: data.position || this.generateRandomPosition(),
-            rotation: data.rotation || 0,
-            direction: data.direction || { x: 0, y: 0, z: -1 },
-            stats: data.stats || this.getDefaultPlayerStats(),
-            hp: data.hp || 100,
-            maxHp: data.maxHp || 100,
-            isAlive: true,
-            username: data.username || `AI-Bot`
-          };
-          
-          // Informer tous les clients du nouveau joueur bot
-          this.io.emit('playerJoined', {
-            id: botId,
-            ...this.gameState.players[botId]
-          });
-          
-          // Ajouter au système de collision
-          this.addBotToCollisionSystem(botId);
-        }
-        break;
-        
-      case 'playerUpdate':
-        // Mettre à jour directement le bot dans l'état du jeu
-        if (this.gameState.players[botId]) {
-          // Mettre à jour la position et les autres propriétés
-          Object.assign(this.gameState.players[botId], data);
-          
-          // Informer tous les clients de la mise à jour
-          this.io.emit('playerMoved', {
-            id: botId,
-            ...data
-          });
-        }
-        break;
-        
-      case 'playerShoot':
-        // Traiter le tir du bot directement
-        // Générer un ID unique pour le projectile
-        const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        
-        // Normaliser la direction
-        const direction = data.direction;
-        const magnitude = Math.sqrt(
-          direction.x * direction.x + 
-          direction.y * direction.y + 
-          direction.z * direction.z
-        );
-        
-        const normalizedDirection = {
-          x: direction.x / magnitude,
-          y: direction.y / magnitude, 
-          z: direction.z / magnitude
-        };
-        
-        // Ajouter le projectile à l'état du jeu
-        this.gameState.projectiles[projectileId] = {
-          id: projectileId,
-          ownerId: botId,
-          position: data.position,
-          direction: normalizedDirection,
-          damage: this.gameState.players[botId]?.stats?.attack || 10,
-          range: this.gameState.players[botId]?.stats?.range || 10,
-          createdAt: Date.now()
-        };
-        
-        // Informer tous les clients du nouveau projectile
-        this.io.emit('projectileCreated', {
-          id: projectileId,
-          ownerId: botId,
-          position: data.position,
-          direction: normalizedDirection,
-          damage: this.gameState.players[botId]?.stats?.attack || 10,
-          range: this.gameState.players[botId]?.stats?.range || 10
-        });
-        break;
-        
-      case 'processorCollected':
-        // Traiter la collecte de processeur
-        if (data.processorId && this.gameState.processors[data.processorId]) {
-          const processor = this.gameState.processors[data.processorId];
-          
-          // Mettre à jour les stats du bot
-          if (this.gameState.players[botId]) {
-            const player = this.gameState.players[botId];
-            
-            // Mettre à jour les stats en fonction du type de processeur
-            switch(processor.type) {
-              case 'hp':
-                player.maxHp += processor.boost;
-                player.hp += processor.boost;
-                break;
-              case 'resistance':
-              case 'attack':
-              case 'attackSpeed':
-              case 'range':
-              case 'speed':
-              case 'repairSpeed':
-                player.stats[processor.type] += processor.boost;
-                break;
-            }
-            
-            // Incrémenter le compteur de processeurs
-            player.stats.processorCounts[processor.type]++;
-            
-            // Calculer le total de processeurs
-            const totalProcessors = Object.values(player.stats.processorCounts).reduce(
-              (sum, count) => sum + count, 0
-            );
-            
-            // Supprimer le processeur du jeu
-            delete this.gameState.processors[data.processorId];
-            
-            // Informer les clients
-            this.io.emit('processorRemoved', { 
-              id: data.processorId 
-            });
-            
-            // Informer de la mise à jour des stats
-            this.io.emit('playerStatsUpdated', {
-              id: botId,
-              stats: player.stats,
-              hp: player.hp,
-              maxHp: player.maxHp,
-              totalProcessors: totalProcessors
-            });
-          }
-        }
-        break;
-        
-      case 'cannonCollected':
-        // Traiter la collecte de canon
-        if (data.cannonId && this.gameState.cannons[data.cannonId]) {
-          // Supprimer le canon du jeu
-          delete this.gameState.cannons[data.cannonId];
-          
-          // Informer les clients
-          this.io.emit('cannonRemoved', { 
-            id: data.cannonId 
-          });
-        }
-        break;
-    }
-    
-    // Notifier le bot de l'action
-    if (this.botIds[botId] && this.botIds[botId].handleAction) {
-      this.botIds[botId].handleAction(event, data);
     }
   }
   
@@ -321,8 +186,7 @@ class BotManager {
 
   updateBots() {
     // Vérifier si des bots sont manquants
-    let botCount = 0;
-    Object.keys(this.botIds).forEach(botId => {
+    Object.keys(this.botInstances).forEach(botId => {
       if (!this.gameState.players[botId]) {
         console.log(`Bot ${botId} manquant dans l'état du jeu, tentative de réinsertion`);
         
@@ -348,27 +212,149 @@ class BotManager {
         
         // Ajouter au système de collision
         this.addBotToCollisionSystem(botId);
-      } else {
-        botCount++;
       }
     });
     
     // Copie de l'état du jeu pour les bots
     const gameStateCopy = JSON.parse(JSON.stringify(this.gameState));
     
-    // Mettre à jour chaque bot
-    Object.values(this.botIds).forEach(bot => {
-      if (bot.update) {
+    // Mettre à jour chaque bot (demander leur nouvelle intention d'inputs)
+    Object.entries(this.botInstances).forEach(([botId, bot]) => {
+      if (bot.update && this.gameState.players[botId] && this.gameState.players[botId].isAlive) {
         try {
           bot.update(gameStateCopy);
         } catch (error) {
-          console.error(`Erreur lors de la mise à jour du bot ${bot.id}:`, error);
+          console.error(`Erreur lors de la mise à jour du bot ${botId}:`, error);
         }
       }
     });
     
-    // Vérifier si les bots sont bloqués (juste pour le log, pas d'action forcée)
-    Object.keys(this.botIds).forEach(botId => {
+    // Traiter les inputs de chaque bot et les appliquer
+    this.processBotInputs();
+    
+    // Vérifier si les bots sont bloqués
+    this.checkForStuckBots();
+  }
+  
+  // Traiter les inputs stockés et les convertir en actions de jeu
+  processBotInputs() {
+    Object.entries(this.botInputs).forEach(([botId, inputs]) => {
+      const bot = this.gameState.players[botId];
+      if (!bot || !bot.isAlive) return;
+      
+      // Récupérer les stats du bot
+      const botSpeed = bot.stats?.speed || 0.02;
+      const botRotationSpeed = 0.02; // Même vitesse de rotation que les joueurs
+      
+      // Calculer les nouvelles position et rotation
+      let newPosition = {...bot.position};
+      let newRotation = bot.rotation;
+      let newDirection = {...bot.direction};
+      
+      // Appliquer les rotations
+      if (inputs.left) {
+        newRotation += botRotationSpeed;
+        // Recalculer la direction
+        newDirection = {
+          x: Math.sin(newRotation),
+          y: 0,
+          z: Math.cos(newRotation)
+        };
+      }
+      if (inputs.right) {
+        newRotation -= botRotationSpeed;
+        // Recalculer la direction
+        newDirection = {
+          x: Math.sin(newRotation),
+          y: 0,
+          z: Math.cos(newRotation)
+        };
+      }
+      
+      // Appliquer les mouvements
+      if (inputs.forward) {
+        newPosition.x += newDirection.x * botSpeed;
+        newPosition.z += newDirection.z * botSpeed;
+      }
+      if (inputs.backward) {
+        newPosition.x -= newDirection.x * botSpeed;
+        newPosition.z -= newDirection.z * botSpeed;
+      }
+      
+      // Gérer le tir
+      if (inputs.fire) {
+        this.handleBotShoot(botId);
+      }
+      
+      // Mettre à jour la position et la rotation du bot dans l'état du jeu
+      this.gameState.players[botId].position = newPosition;
+      this.gameState.players[botId].rotation = newRotation;
+      this.gameState.players[botId].direction = newDirection;
+      
+      // Informer tous les clients de la mise à jour
+      this.io.emit('playerMoved', {
+        id: botId,
+        position: newPosition,
+        rotation: newRotation,
+        direction: newDirection
+      });
+    });
+  }
+  
+  // Gérer le tir d'un bot
+  handleBotShoot(botId) {
+    const bot = this.gameState.players[botId];
+    if (!bot || !bot.isAlive) return;
+    
+    // Vérifier le cooldown de tir (utiliser la même règle que pour les joueurs)
+    const currentTime = Date.now();
+    const lastShootTime = bot.lastShootTime || 0;
+    const attackSpeed = bot.stats?.attackSpeed || 0.5;
+    const cooldown = 1000 / attackSpeed; // Cooldown en millisecondes
+    
+    if (currentTime - lastShootTime < cooldown) {
+      return; // Encore en cooldown
+    }
+    
+    // Mettre à jour le dernier temps de tir
+    bot.lastShootTime = currentTime;
+    
+    // Créer l'ID du projectile
+    const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    
+    // Position du projectile (devant le bot)
+    const spawnDistance = 0.5; // Distance à laquelle le projectile apparaît devant le bot
+    const projectilePosition = {
+      x: bot.position.x + bot.direction.x * spawnDistance,
+      y: bot.position.y,
+      z: bot.position.z + bot.direction.z * spawnDistance
+    };
+    
+    // Ajouter le projectile à l'état du jeu
+    this.gameState.projectiles[projectileId] = {
+      id: projectileId,
+      ownerId: botId,
+      position: projectilePosition,
+      direction: bot.direction,
+      damage: bot.stats?.attack || 10,
+      range: bot.stats?.range || 10,
+      createdAt: currentTime
+    };
+    
+    // Informer tous les clients du nouveau projectile
+    this.io.emit('projectileCreated', {
+      id: projectileId,
+      ownerId: botId,
+      position: projectilePosition,
+      direction: bot.direction,
+      damage: bot.stats?.attack || 10,
+      range: bot.stats?.range || 10
+    });
+  }
+  
+  // Vérifier si des bots sont bloqués
+  checkForStuckBots() {
+    Object.keys(this.botInstances).forEach(botId => {
       const bot = this.gameState.players[botId];
       if (!bot || !bot.isAlive) return;
       
@@ -387,8 +373,11 @@ class BotManager {
         if (distance < 0.01) {
           this.stuckCounters[botId]++;
           
-          if (this.stuckCounters[botId] > 50 && this.stuckCounters[botId] % 50 === 0) {
-            console.log(`Bot ${botId} semble bloqué depuis un moment`);
+          // Si le bot est bloqué depuis trop longtemps, forcer un mouvement aléatoire
+          if (this.stuckCounters[botId] > 50) {
+            console.log(`Bot ${botId} semble bloqué, application d'un mouvement aléatoire`);
+            this.applyRandomMovement(botId);
+            this.stuckCounters[botId] = 0;
           }
         } else {
           // Réinitialiser le compteur s'il a bougé
@@ -401,29 +390,68 @@ class BotManager {
     });
   }
   
-  // Notification directe au bot
-  handleBotAction(botId, action, data) {
-    if (this.botIds[botId] && this.botIds[botId].handleAction) {
-      this.botIds[botId].handleAction(action, data);
-    }
+  // Appliquer un mouvement aléatoire à un bot bloqué
+  applyRandomMovement(botId) {
+    const bot = this.gameState.players[botId];
+    if (!bot) return;
+    
+    // Générer une nouvelle direction aléatoire
+    const randomAngle = Math.random() * Math.PI * 2;
+    const newDirection = {
+      x: Math.sin(randomAngle),
+      y: 0,
+      z: Math.cos(randomAngle)
+    };
+    
+    // Appliquer la nouvelle direction et rotation
+    bot.rotation = randomAngle;
+    bot.direction = newDirection;
+    
+    // Forcer un mouvement dans cette direction
+    const botSpeed = bot.stats?.speed || 0.02;
+    bot.position.x += newDirection.x * botSpeed * 10; // Boosted speed to escape stuck position
+    bot.position.z += newDirection.z * botSpeed * 10;
+    
+    // Informer les clients
+    this.io.emit('playerMoved', {
+      id: botId,
+      position: bot.position,
+      rotation: bot.rotation,
+      direction: bot.direction
+    });
   }
   
-  // Gérer la déconnexion d'un bot
-  handleBotDisconnect(botId) {
-    console.log(`Bot ${botId} déconnecté`);
-    // Ne pas supprimer de l'état du jeu, cela sera géré par cleanupBots si nécessaire
+  // Notifier les bots des événements du jeu
+  notifyBots(event, data) {
+    // Pour chaque bot concerné par l'événement
+    const botId = event === 'playerKilled' || event === 'playerDamaged' ? data.id : null;
+    
+    if (botId && this.botInstances[botId]) {
+      // Notifier le bot spécifique
+      if (this.botInstances[botId].handleEvent) {
+        this.botInstances[botId].handleEvent(event, data);
+      }
+    } else {
+      // Événement global, notifier tous les bots
+      Object.entries(this.botInstances).forEach(([id, bot]) => {
+        if (bot.handleEvent) {
+          bot.handleEvent(event, data);
+        }
+      });
+    }
   }
   
   cleanupBots() {
     // Supprimer les bots de l'état du jeu
-    Object.keys(this.botIds).forEach(botId => {
+    Object.keys(this.botInstances).forEach(botId => {
       delete this.gameState.players[botId];
       delete this.lastPositions[botId];
       delete this.stuckCounters[botId];
+      delete this.botInputs[botId];
     });
     
     // Réinitialiser la liste des bots
-    this.botIds = {};
+    this.botInstances = {};
     
     console.log("Tous les bots ont été nettoyés");
   }
