@@ -347,7 +347,7 @@ class BotManager {
       attack: 10,
       attackSpeed: 0.5,
       range: 10,
-      speed: 0.02,
+      speed: 0.04,
       repairSpeed: 0.5,
       processorCounts: {
         hp: 0,
