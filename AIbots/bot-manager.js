@@ -312,27 +312,26 @@ class BotManager {
 		  return;
 		}
 		
-		// Vérifier que le bot existe et a une position
-		const bot = this.gameState.players[botId];
-		if (!bot.position) {
-		  console.error(`Bot ${botId} n'a pas de position définie`);
-		  return;
-		}
-		
-		// Envoyer un message spécial à tous les clients pour créer un collider pour ce bot
 		console.log(`Bot ${botId} ajouté au système de collision`);
 		
-		// CORRECTION: S'assurer que l'événement est correctement émis avec toutes les données nécessaires
-		this.io.emit('createBotCollider', {
-		  botId: botId,
-		  position: this.gameState.players[botId].position,
-		  rotation: this.gameState.players[botId].rotation,
-		  username: this.gameState.players[botId].username,
-		  hasCollision: true  // Assurer que la collision est activée
-		});
+		// Ajouter un délai de 2 secondes avant d'envoyer l'événement de création de collider
+		setTimeout(() => {
+		  // Vérifier à nouveau que le bot existe toujours après le délai
+		  if (this.gameState.players[botId]) {
+			console.log(`Envoi différé de createBotCollider pour ${botId} après 2 secondes`);
+			
+			this.io.emit('createBotCollider', {
+			  botId: botId,
+			  position: this.gameState.players[botId].position,
+			  rotation: this.gameState.players[botId].rotation,
+			  username: this.gameState.players[botId].username,
+			  hasCollision: true
+			});
+		  } else {
+			console.log(`Bot ${botId} n'existe plus après le délai, annulation de la création du collider`);
+		  }
+		}, 2000); // Délai de 2000 millisecondes (2 secondes)
 		
-		// Ajouter une confirmation supplémentaire
-		console.log(`Événement createBotCollider émis pour ${botId}`);
 	  } catch (error) {
 		console.error(`Erreur lors de l'ajout du bot ${botId} au système de collision:`, error);
 	  }
