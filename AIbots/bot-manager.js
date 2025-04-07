@@ -582,6 +582,7 @@ class BotManager {
 		});
 	  });
 	}
+  
   // Gérer le tir d'un bot
   handleBotShoot(botId) {
     const bot = this.gameState.players[botId];
@@ -631,7 +632,7 @@ class BotManager {
       const zOffset = -0.2 * botScale;
       
       // Position du bout du canon latéral
-      const localBarrelZ = -0.12; // Longueur approximative du canon
+      const localBarrelZ = -0.36 * botScale; // Longueur approximative du canon
       
       // Position dans l'espace 3D
       const headHeight = 1.3 * botScale; // Hauteur de la tête du robot
@@ -709,6 +710,29 @@ class BotManager {
     );
   }
   
+	// Ajouter cette méthode à BotManager
+	resendBotColliders(targetSocket = null) {
+	  Object.keys(this.botInstances).forEach(botId => {
+		if (this.gameState.players[botId]) {
+		  const bot = this.gameState.players[botId];
+		  
+		  // Soit envoyer à un socket spécifique, soit broadcast à tous
+		  const target = targetSocket || this.io;
+		  
+		  target.emit('createBotCollider', {
+			botId: botId,
+			position: bot.position,
+			rotation: bot.rotation,
+			username: bot.username,
+			hasCollision: true
+		  });
+		  
+		  console.log(`Ré-émission createBotCollider pour ${botId}`);
+		}
+	  });
+	}
+
+  
   // Vérifier si des bots sont bloqués
   checkForStuckBots() {
     Object.keys(this.botInstances).forEach(botId => {
@@ -731,7 +755,7 @@ class BotManager {
           this.stuckCounters[botId]++;
           
           // Si le bot est bloqué depuis trop longtemps, forcer un mouvement aléatoire
-          if (this.stuckCounters[botId] > 50) {
+          if (this.stuckCounters[botId] > 100) {
             console.log(`Bot ${botId} semble bloqué, application d'un mouvement aléatoire`);
             this.applyRandomMovement(botId);
             this.stuckCounters[botId] = 0;
