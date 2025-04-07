@@ -709,29 +709,7 @@ class BotManager {
     );
   }
   
-	// Ajouter cette méthode à BotManager
-	resendBotColliders(targetSocket = null) {
-	  Object.keys(this.botInstances).forEach(botId => {
-		if (this.gameState.players[botId]) {
-		  const bot = this.gameState.players[botId];
-		  
-		  // Soit envoyer à un socket spécifique, soit broadcast à tous
-		  const target = targetSocket || this.io;
-		  
-		  target.emit('createBotCollider', {
-			botId: botId,
-			position: bot.position,
-			rotation: bot.rotation,
-			username: bot.username,
-			hasCollision: true
-		  });
-		  
-		  console.log(`Ré-émission createBotCollider pour ${botId}`);
-		}
-	  });
-	}
 
-  
   // Vérifier si des bots sont bloqués
   checkForStuckBots() {
     Object.keys(this.botInstances).forEach(botId => {
