@@ -96,7 +96,7 @@ class SimpleBot {
     const targetAngle = Math.atan2(
       targetPosition.x - me.position.x,
       targetPosition.z - me.position.z
-    );
+    )+Math.PI;
     
     // Angle actuel du bot
     const currentAngle = me.rotation;
