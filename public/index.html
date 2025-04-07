@@ -1961,12 +1961,15 @@
 				const blockingCollisions = [];
 				const processorCollisions = [];
 				const cannonCollisions = [];
+				const playerCollisions = [];  // Nouveau tableau pour les collisions avec les joueurs
 				
 				collisions.forEach(obj => {
 					if (obj instanceof Processor) {
 						processorCollisions.push(obj);
 					} else if (obj instanceof Cannon) {
 						cannonCollisions.push(obj);
+					} else if (obj instanceof Player) {  // Ajouter ce cas pour les joueurs
+						playerCollisions.push(obj);
 					} else if (!(obj.userData && obj.userData.type === 'floor')) {
 						blockingCollisions.push(obj);
 					}
@@ -1981,9 +1984,73 @@
 					}
 				});
 				
+				// Traiter les collisions avec les joueurs en premier
+				if (playerCollisions.length > 0) {
+					this.handlePlayerCollisions(playerCollisions, oldPosition);
+				}
+				
 				// Gérer les collisions physiques avec les obstacles
 				if (blockingCollisions.length > 0) {
 					this.handlePhysicalCollisions(blockingCollisions, oldPosition);
+				}
+			}
+
+			handlePlayerCollisions(playerCollisions, oldPosition) {
+				// Direction de mouvement actuelle
+				const movementDirection = new THREE.Vector3()
+					.subVectors(this.mesh.position, oldPosition)
+					.normalize();
+				
+				// Si pas de mouvement significatif, ignorer
+				if (movementDirection.length() < 0.001) return;
+				
+				// Vérifier les collisions avec d'autres joueurs
+				let needsPositionReset = false;
+				
+				playerCollisions.forEach(otherPlayer => {
+					if (otherPlayer === this) return; // Ignorer la collision avec soi-même
+					
+					// Calculer le vecteur entre les deux joueurs
+					const pushDirection = new THREE.Vector3()
+						.subVectors(this.mesh.position, otherPlayer.mesh.position)
+						.normalize();
+					
+					// Distance entre les joueurs
+					const distance = this.mesh.position.distanceTo(otherPlayer.mesh.position);
+					
+					// Déterminer le rayon combiné (en tenant compte de l'échelle des joueurs)
+					const thisRadius = this.bodyWidth * this.baseScale * 0.75;
+					const otherRadius = this.bodyWidth * (otherPlayer.baseScale || 1.0) * 0.75;
+					const minDistance = thisRadius + otherRadius;
+					
+					// Si la distance est inférieure à la distance minimale, il y a collision
+					if (distance < minDistance) {
+						// Calculer la force de répulsion
+						const overlap = minDistance - distance;
+						
+						// Pour les joueurs de taille très différente, le plus petit rebondit plus
+						const thisScale = this.baseScale || 1.0;
+						const otherScale = otherPlayer.baseScale || 1.0;
+						const scaleFactor = Math.min(1, thisScale / otherScale);
+						
+						// Appliquer la force de répulsion (seulement sur ce joueur)
+						const pushStrength = overlap * 1.1 * scaleFactor; // Force légèrement supérieure à l'overlap
+						
+						// Revenir à l'ancienne position puis appliquer une légère poussée dans la direction opposée
+						this.mesh.position.copy(oldPosition);
+						this.mesh.position.addScaledVector(pushDirection, pushStrength);
+						
+						needsPositionReset = true;
+					}
+				});
+				
+				// Si une collision a été résolue, informer le serveur de la nouvelle position
+				if (needsPositionReset && this.isMainPlayer) {
+					socket.emit('playerUpdate', {
+						position: this.mesh.position,
+						rotation: this.mesh.rotation.y,
+						direction: this.direction
+					});
 				}
 			}
 
