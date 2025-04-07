@@ -708,7 +708,7 @@ class BotManager {
       projectilePosition = {
         x: worldX,
         y: worldY,
-        z: worldZ
+        z: worldZ + 2
       };
     }
     
