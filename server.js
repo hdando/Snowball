@@ -902,6 +902,8 @@ io.on('connection', (socket) => {
   // Traiter la création d'un nouveau joueur
   socket.on('playerJoin', (playerData) => {
     handlePlayerJoin(socket, playerData);
+    // Après avoir géré la connexion du joueur, ré-émettre les colliders
+    botManager.resendBotColliders(socket);
   });
   
   // Gérer les dégâts aux structures
