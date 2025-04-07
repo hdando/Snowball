@@ -1867,8 +1867,9 @@
 				
 				const colliderMaterial = new THREE.MeshBasicMaterial({ 
 					transparent: true,
-					opacity: 0.0, // Invisible en production
-					wireframe: true
+					opacity: 0.0, // Invisible par défaut
+					wireframe: true,
+					color: 0xff0000 // Couleur de base rouge
 				});
 				
 				this.colliderMesh = new THREE.Mesh(colliderGeometry, colliderMaterial);
@@ -3995,7 +3996,13 @@
 				if (!otherPlayers[data.botId].hasCollision) {
 				  otherPlayers[data.botId].createCollider();
 				  otherPlayers[data.botId].hasCollision = true;
-				  
+
+		        // AJOUT: Rendre le collider visible pour les bots
+				if (otherPlayers[data.botId].colliderMesh) {
+					otherPlayers[data.botId].colliderMesh.material.opacity = 0.3;
+					otherPlayers[data.botId].colliderMesh.material.color.set(0xff0000); // Rouge
+				}
+
 				  // Ajouter au système de collision
 				  if (collisionSystem) {
 					collisionSystem.addObject(otherPlayers[data.botId]);
