@@ -314,10 +314,9 @@ class BotManager {
 		
 		console.log(`Bot ${botId} ajouté au système de collision`);
 		
-		// Ajouter un délai de 2 secondes avant d'envoyer l'événement de création de collider
-		setTimeout(() => {
-		  // Vérifier à nouveau que le bot existe toujours après le délai
-		  if (this.gameState.players[botId]) {
+
+		// Vérifier à nouveau que le bot existe toujours après le délai
+		if (this.gameState.players[botId]) {
 			console.log(`Envoi différé de createBotCollider pour ${botId} après 2 secondes`);
 			
 			this.io.emit('createBotCollider', {
@@ -327,10 +326,10 @@ class BotManager {
 			  username: this.gameState.players[botId].username,
 			  hasCollision: true
 			});
-		  } else {
+		} else {
 			console.log(`Bot ${botId} n'existe plus après le délai, annulation de la création du collider`);
-		  }
-		}, 2000); // Délai de 2000 millisecondes (2 secondes)
+		}
+
 		
 	  } catch (error) {
 		console.error(`Erreur lors de l'ajout du bot ${botId} au système de collision:`, error);
@@ -710,26 +709,6 @@ class BotManager {
     );
   }
   
-	// Ajouter cette méthode à BotManager
-	resendBotColliders(targetSocket = null) {
-	  Object.keys(this.botInstances).forEach(botId => {
-		if (this.gameState.players[botId]) {
-		  const bot = this.gameState.players[botId];
-		  
-		  // Soit envoyer à un socket spécifique, soit broadcast à tous
-		  const target = targetSocket || this.io;
-		  
-		  target.emit('createBotCollider', {
-			botId: botId,
-			position: bot.position,
-			rotation: bot.rotation,
-			username: bot.username,
-			hasCollision: true
-		  });
-		  
-		  console.log(`Ré-émission createBotCollider pour ${botId}`);
-		}
-	  });
 	}
 
   
