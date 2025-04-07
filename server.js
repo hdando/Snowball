@@ -501,7 +501,7 @@ function spawnDroppedProcessors(playerId, position) {
     attack: 1,
     attackSpeed: 0.02,
     range: 1,
-    speed: 0.003,
+    speed: 0.002,
     repairSpeed: 0.05
   };
   
@@ -518,7 +518,7 @@ function spawnDroppedProcessors(playerId, position) {
       // Position aléatoire autour du joueur mort
       const randomOffset = {
         x: (Math.random() - 0.5) * 2,
-        y: 0.1,
+        y: 0.2,
         z: (Math.random() - 0.5) * 2
       };
       
