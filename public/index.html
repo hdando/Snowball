@@ -4001,6 +4001,9 @@
 					if (otherPlayers[data.botId].colliderMesh) {
 						otherPlayers[data.botId].colliderMesh.material.opacity = 0.3;
 						otherPlayers[data.botId].colliderMesh.material.color.set(0x00ff00); // Vert
+						console.log('Collider rendu visible pour:', data.botId);
+					} else {
+						console.log('colliderMesh non trouvé pour le bot:', data.botId);
 					}
 
 					// Ajouter au système de collision
@@ -4018,6 +4021,15 @@
 				// S'assurer que le collider est créé
 				botPlayer.createCollider();
 				botPlayer.hasCollision = true;
+				
+				// AJOUT: Rendre le collider visible immédiatement
+				if (botPlayer.colliderMesh) {
+				  botPlayer.colliderMesh.material.opacity = 0.5; // Plus visible pour le test
+				  botPlayer.colliderMesh.material.color.set(0x00ff00); // Vert
+				  console.log('Collider créé et rendu visible pour le nouveau bot:', data.botId);
+				} else {
+				  console.log('colliderMesh non trouvé pour le nouveau bot:', data.botId);
+				}
 				
 				// Ajouter au système de collision
 				if (collisionSystem) {
