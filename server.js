@@ -433,7 +433,7 @@ function spawnProcessors() {
       attack: 1,
       attackSpeed: 0.02,
       range: 1,
-      speed: 0.003,
+      speed: 0.002,
       repairSpeed: 0.05
     };
     
