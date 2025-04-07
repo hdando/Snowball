@@ -93,10 +93,10 @@ class SimpleBot {
   // Se déplacer vers une cible
   moveTowardsTarget(me, targetPosition, shouldFire) {
     // Calculer l'angle vers la cible
-	const targetAngle = Math.atan2(
-	  targetPosition.x - me.position.x,
-	  me.position.z - targetPosition.z  // Inversé pour correspondre à la convention Three.js
-	);
+    const targetAngle = Math.atan2(
+      targetPosition.x - me.position.x,
+      targetPosition.z - me.position.z
+    )+Math.PI;
     
     // Angle actuel du bot
     const currentAngle = me.rotation;
