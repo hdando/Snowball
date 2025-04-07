@@ -120,13 +120,16 @@ class SimpleBot {
     }
     
     // Envoyer les inputs en fonction de la position relative
-    this.sendInputs({
-      forward: Math.abs(angleDiff) < angleTolerance, // Avancer si l'angle est assez précis
-      backward: false,
-      left: angleDiff > 0,  // Tourner à gauche si la cible est à gauche
-      right: angleDiff < 0, // Tourner à droite si la cible est à droite
-      fire: shouldFire
-    });
+	this.sendInputs({
+	  // Échanger forward et backward
+	  backward: Math.abs(angleDiff) < angleTolerance, // Utiliser "backward" pour avancer
+	  forward: false,                                // Désactiver "forward"
+	  
+	  // Garder les commandes de rotation identiques
+	  left: angleDiff > 0,
+	  right: angleDiff < 0,
+	  fire: shouldFire
+	});
   }
   
   // Vérification simple d'obstacle
