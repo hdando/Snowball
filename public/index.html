@@ -3992,24 +3992,23 @@
 			  if (otherPlayers[data.botId]) {
 				console.log('Bot déjà existant, mise à jour du collider');
 				
-				// S'assurer que le bot a un collider
-				if (!otherPlayers[data.botId].hasCollision) {
-				    otherPlayers[data.botId].createCollider();
-				    otherPlayers[data.botId].hasCollision = true;
+				// MODIFIÉ: Forcer la création/mise à jour du collider, peu importe hasCollision
+				// Créer le collider sans vérification
+				otherPlayers[data.botId].createCollider();
+				otherPlayers[data.botId].hasCollision = true;
 
-					// AJOUT: Rendre le collider visible pour les bots
-					if (otherPlayers[data.botId].colliderMesh) {
-						otherPlayers[data.botId].colliderMesh.material.opacity = 0.3;
-						otherPlayers[data.botId].colliderMesh.material.color.set(0x00ff00); // Vert
-						console.log('Collider rendu visible pour:', data.botId);
-					} else {
-						console.log('colliderMesh non trouvé pour le bot:', data.botId);
-					}
+				// Rendre le collider visible
+				if (otherPlayers[data.botId].colliderMesh) {
+				  otherPlayers[data.botId].colliderMesh.material.opacity = 0.3;
+				  otherPlayers[data.botId].colliderMesh.material.color.set(0x00ff00); // Vert
+				  console.log('Collider rendu visible pour:', data.botId);
+				} else {
+				  console.log('colliderMesh non trouvé pour le bot:', data.botId);
+				}
 
-					// Ajouter au système de collision
-					if (collisionSystem) {
-						collisionSystem.addObject(otherPlayers[data.botId]);
-					}
+				// Ajouter au système de collision
+				if (collisionSystem) {
+				  collisionSystem.addObject(otherPlayers[data.botId]);
 				}
 			  } else {
 				// Créer un joueur pour le bot avec un collider
