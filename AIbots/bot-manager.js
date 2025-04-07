@@ -413,71 +413,165 @@ class BotManager {
     this.checkForStuckBots();
   }
   
-  // Traiter les inputs stockés et les convertir en actions de jeu
-  processBotInputs() {
-    Object.entries(this.botInputs).forEach(([botId, inputs]) => {
-      const bot = this.gameState.players[botId];
-      if (!bot || !bot.isAlive) return;
-      
-      // Récupérer les stats du bot
-      const botSpeed = bot.stats?.speed || 0.04;
-      const botRotationSpeed = 0.02; // Même vitesse de rotation que les joueurs
-      
-      // Calculer les nouvelles position et rotation
-      let newPosition = {...bot.position};
-      let newRotation = bot.rotation;
-      let newDirection = {...bot.direction};
-      
-      // Appliquer les rotations
-      if (inputs.left) {
-        newRotation += botRotationSpeed;
-        // Recalculer la direction
-        newDirection = {
-          x: Math.sin(newRotation),
-          y: 0,
-          z: Math.cos(newRotation)
-        };
-      }
-      if (inputs.right) {
-        newRotation -= botRotationSpeed;
-        // Recalculer la direction
-        newDirection = {
-          x: Math.sin(newRotation),
-          y: 0,
-          z: Math.cos(newRotation)
-        };
-      }
-      
-      // Appliquer les mouvements
-      if (inputs.forward) {
-        newPosition.x += newDirection.x * botSpeed;
-        newPosition.z += newDirection.z * botSpeed;
-      }
-      if (inputs.backward) {
-        newPosition.x -= newDirection.x * botSpeed;
-        newPosition.z -= newDirection.z * botSpeed;
-      }
-      
-      // Gérer le tir
-      if (inputs.fire) {
-        this.handleBotShoot(botId);
-      }
-      
-      // Mettre à jour la position et la rotation du bot dans l'état du jeu
-      this.gameState.players[botId].position = newPosition;
-      this.gameState.players[botId].rotation = newRotation;
-      this.gameState.players[botId].direction = newDirection;
-      
-      // Informer tous les clients de la mise à jour
-      this.io.emit('playerMoved', {
-        id: botId,
-        position: newPosition,
-        rotation: newRotation,
-        direction: newDirection
-      });
-    });
-  }
-  
+	// Calcule la distance entre 2 positions
+	calculateDistance(pos1, pos2) {
+	  if (!pos1 || !pos2) return Infinity;
+	  return Math.sqrt(
+		Math.pow(pos2.x - pos1.x, 2) +
+		Math.pow(pos2.z - pos1.z, 2)
+	  );
+	}
+
+	// Replace the processBotInputs method with this enhanced version
+	processBotInputs() {
+	  Object.entries(this.botInputs).forEach(([botId, inputs]) => {
+		const bot = this.gameState.players[botId];
+		if (!bot || !bot.isAlive) return;
+		
+		// Get bot stats
+		const botSpeed = bot.stats?.speed || 0.04;
+		const botRotationSpeed = 0.02;
+		
+		// Calculate new position and rotation
+		let newPosition = {...bot.position};
+		let newRotation = bot.rotation;
+		let newDirection = {...bot.direction};
+		
+		// Apply rotations
+		if (inputs.left) {
+		  newRotation += botRotationSpeed;
+		  // Recalculate direction
+		  newDirection = {
+			x: Math.sin(newRotation),
+			y: 0,
+			z: Math.cos(newRotation)
+		  };
+		}
+		if (inputs.right) {
+		  newRotation -= botRotationSpeed;
+		  // Recalculate direction
+		  newDirection = {
+			x: Math.sin(newRotation),
+			y: 0,
+			z: Math.cos(newRotation)
+		  };
+		}
+		
+		// Save original position for collision detection
+		const originalPosition = {...bot.position};
+		
+		// Calculate potential new position
+		if (inputs.forward) {
+		  newPosition.x += newDirection.x * botSpeed;
+		  newPosition.z += newDirection.z * botSpeed;
+		}
+		if (inputs.backward) {
+		  newPosition.x -= newDirection.x * botSpeed;
+		  newPosition.z -= newDirection.z * botSpeed;
+		}
+		
+		// Check for collisions with other players and structures
+		let willCollide = false;
+		
+		// Check against other players
+		Object.entries(this.gameState.players).forEach(([playerId, player]) => {
+		  if (playerId === botId || !player.isAlive) return;
+		  
+		  const distance = this.calculateDistance(newPosition, player.position);
+		  // Adjust collision radius based on player scale
+		  const playerScale = 1.0;
+		  const collisionRadius = 2.0 * playerScale;
+		  
+		  if (distance < collisionRadius) {
+			willCollide = true;
+		  }
+		});
+		
+		// Check against structures
+		Object.values(this.gameState.structures).forEach(structure => {
+		  if (structure.destroyed) return;
+		  
+		  const distance = this.calculateDistance(newPosition, structure.position);
+		  // Different collision radius based on structure type
+		  const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
+		  
+		  if (distance < collisionRadius) {
+			willCollide = true;
+		  }
+		});
+		
+		// If collision detected, try alternative directions
+		if (willCollide) {
+		  // Try multiple directions to find a clear path
+		  const potentialDirections = [
+			{x: Math.sin(newRotation + Math.PI/4), z: Math.cos(newRotation + Math.PI/4)},  // 45° right
+			{x: Math.sin(newRotation - Math.PI/4), z: Math.cos(newRotation - Math.PI/4)},  // 45° left
+			{x: Math.sin(newRotation + Math.PI/2), z: Math.cos(newRotation + Math.PI/2)},  // 90° right
+			{x: Math.sin(newRotation - Math.PI/2), z: Math.cos(newRotation - Math.PI/2)},  // 90° left
+			{x: -newDirection.x, z: -newDirection.z}  // Reverse
+		  ];
+		  
+		  let foundValidDirection = false;
+		  
+		  for (const dir of potentialDirections) {
+			const testPosition = {
+			  x: originalPosition.x + dir.x * botSpeed,
+			  y: originalPosition.y,
+			  z: originalPosition.z + dir.z * botSpeed
+			};
+			
+			// Check if direction is clear
+			let directionClear = true;
+			
+			// Check against players
+			Object.entries(this.gameState.players).forEach(([playerId, player]) => {
+			  if (playerId === botId || !player.isAlive) return;
+			  if (this.calculateDistance(testPosition, player.position) < 2.0) {
+				directionClear = false;
+			  }
+			});
+			
+			// Check against structures
+			Object.values(this.gameState.structures).forEach(structure => {
+			  if (structure.destroyed) return;
+			  const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
+			  if (this.calculateDistance(testPosition, structure.position) < collisionRadius) {
+				directionClear = false;
+			  }
+			});
+			
+			if (directionClear) {
+			  newPosition = testPosition;
+			  foundValidDirection = true;
+			  break;
+			}
+		  }
+		  
+		  // If no valid direction found, stay in place
+		  if (!foundValidDirection) {
+			newPosition = originalPosition;
+		  }
+		}
+		
+		// Handle firing
+		if (inputs.fire) {
+		  this.handleBotShoot(botId);
+		}
+		
+		// Update bot position and rotation in game state
+		this.gameState.players[botId].position = newPosition;
+		this.gameState.players[botId].rotation = newRotation;
+		this.gameState.players[botId].direction = newDirection;
+		
+		// Inform all clients
+		this.io.emit('playerMoved', {
+		  id: botId,
+		  position: newPosition,
+		  rotation: newRotation,
+		  direction: newDirection
+		});
+	  });
+	}
   // Gérer le tir d'un bot
   handleBotShoot(botId) {
     const bot = this.gameState.players[botId];
