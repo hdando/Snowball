@@ -487,11 +487,26 @@ class BotManager {
 		  if (playerId === botId || !player.isAlive) return;
 		  
 		  const distance = this.calculateDistance(newPosition, player.position);
-		  // Adjust collision radius based on player scale
-		  const playerScale = 1.0;
-		  const collisionRadius = 2.0 * playerScale;
 		  
-		  if (distance < collisionRadius) {
+		  // Adjust collision radius based on player scale and processor count
+		  let playerScale = 1.0;
+		  if (player.stats && player.stats.processorCounts) {
+			const totalProcessors = Object.values(player.stats.processorCounts)
+			  .reduce((sum, count) => sum + count, 0);
+			playerScale = 1.0 + (totalProcessors * 0.005); // Identique à la logique dans Player
+		  }
+		  
+		  let botScale = 1.0;
+		  if (bot.stats && bot.stats.processorCounts) {
+			const totalProcessors = Object.values(bot.stats.processorCounts)
+			  .reduce((sum, count) => sum + count, 0);
+			botScale = 1.0 + (totalProcessors * 0.005);
+		  }
+		  
+		  // Combiner les rayons des deux joueurs
+		  const combinedRadius = (0.75 * botScale) + (0.75 * playerScale);
+		  
+		  if (distance < combinedRadius) {
 			willCollide = true;
 		  }
 		});
@@ -532,10 +547,29 @@ class BotManager {
 			// Check if direction is clear
 			let directionClear = true;
 			
-			// Check against players
+			// Check against players with improved collision detection
 			Object.entries(this.gameState.players).forEach(([playerId, player]) => {
 			  if (playerId === botId || !player.isAlive) return;
-			  if (this.calculateDistance(testPosition, player.position) < 2.0) {
+			  
+			  // Calcul des rayons de collision plus précis
+			  let playerScale = 1.0;
+			  if (player.stats && player.stats.processorCounts) {
+				const totalProcessors = Object.values(player.stats.processorCounts)
+				  .reduce((sum, count) => sum + count, 0);
+				playerScale = 1.0 + (totalProcessors * 0.005);
+			  }
+			  
+			  let botScale = 1.0;
+			  if (bot.stats && bot.stats.processorCounts) {
+				const totalProcessors = Object.values(bot.stats.processorCounts)
+				  .reduce((sum, count) => sum + count, 0);
+				botScale = 1.0 + (totalProcessors * 0.005);
+			  }
+			  
+			  // Rayon combiné basé sur la taille des deux joueurs
+			  const combinedRadius = (0.75 * botScale) + (0.75 * playerScale);
+			  
+			  if (this.calculateDistance(testPosition, player.position) < combinedRadius) {
 				directionClear = false;
 			  }
 			});
@@ -581,7 +615,7 @@ class BotManager {
 		});
 	  });
 	}
-  
+	
   // Gérer le tir d'un bot
   handleBotShoot(botId) {
     const bot = this.gameState.players[botId];
