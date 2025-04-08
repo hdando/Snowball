@@ -3146,29 +3146,6 @@
 				createGuides(0.2);
 			}
 			
-			resetTrackSegmentsToInitialPositions() {
-				// Réinitialiser les segments gauches
-				if (this.leftTrackSegments && this.leftTrackInitialPositions) {
-					this.leftTrackSegments.forEach((segment, index) => {
-						if (index < this.leftTrackInitialPositions.length) {
-							segment.position.copy(this.leftTrackInitialPositions[index]);
-						}
-					});
-				}
-				
-				// Réinitialiser les segments droits
-				if (this.rightTrackSegments && this.rightTrackInitialPositions) {
-					this.rightTrackSegments.forEach((segment, index) => {
-						if (index < this.rightTrackInitialPositions.length) {
-							segment.position.copy(this.rightTrackInitialPositions[index]);
-						}
-					});
-				}
-				
-				// Forcer la position Y du robot à une valeur fixe très basse
-				this.mesh.position.y = 0.01;
-			}
-	
 			// Créer le canon
 			createCannon() {
 				// Créer la tête du robot avec la caméra et le canon
@@ -3177,8 +3154,25 @@
 				this.storeAllInitialPositions();
 			}
 			
-			//Stocker les positions initiales
+			// Stocker les positions initiales
 			storeAllInitialPositions() {
+				// STOCKAGE DES POSITIONS DU CORPS ET DE LA TÊTE
+				// Corps du robot
+				if (this.bodyGroup) {
+					this.bodyGroupInitialState = {
+						position: this.bodyGroup.position.clone(),
+						rotation: this.bodyGroup.rotation.clone()
+					};
+				}
+				
+				// Tête du robot
+				if (this.headGroup) {
+					this.headGroupInitialState = {
+						position: this.headGroup.position.clone(),
+						rotation: this.headGroup.rotation.clone()
+					};
+				}
+				
 				// STOCKAGE DES POSITIONS DES CANONS
 				// Canon principal
 				if (this.cannonBarrel) {
@@ -3211,7 +3205,6 @@
 					);
 				}
 			}
-			
 			// Créer la tête du robot
 			createRobotHead() {
 				// Groupe pour la tête qui sera positionnée au-dessus du corps
@@ -3333,6 +3326,8 @@
 						}
 					});
 				}
+				// Forcer la position Y du robot à une valeur fixe très basse
+				this.mesh.position.y = 0.01;
 			}
 			
 			// Méthode pour mettre à jour l'interface utilisateur
