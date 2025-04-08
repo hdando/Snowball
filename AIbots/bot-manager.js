@@ -91,7 +91,12 @@ class BotManager {
           direction: new THREE.Vector3(0, 0, -1).applyAxisAngle(
             new THREE.Vector3(0, 1, 0), 
             Math.random() * Math.PI * 2
-          ).toJSON(), // Conversion en objet simple
+          );
+		  direction: {
+			  x: directionVector.x,
+			  y: directionVector.y,
+			  z: directionVector.z
+		  },
           stats: this.getDefaultPlayerStats(),
           hp: 100,
           maxHp: 100,
@@ -414,7 +419,11 @@ class BotManager {
           id: botId,
           position: randomPosition,
           rotation: randomRotation,
-          direction: direction.toJSON(), // Convertir en objet simple pour compatibilité
+          direction: {
+			  x: direction.x,
+			  y: direction.y,
+			  z: direction.z
+			}, 
           stats: this.getDefaultPlayerStats(),
           hp: 100,
           maxHp: 100,
