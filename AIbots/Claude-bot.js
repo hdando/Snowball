@@ -122,8 +122,8 @@ class SimpleBot {
     // Envoyer les inputs en fonction de la position relative
 	this.sendInputs({
 	  // Échanger forward et backward
-	  backward: Math.abs(angleDiff) < angleTolerance, // Utiliser "backward" pour avancer
-	  forward: false,                                // Désactiver "forward"
+	  forward: Math.abs(angleDiff) < angleTolerance,
+	  backward: false,                                
 	  
 	  // Garder les commandes de rotation identiques
 	  left: angleDiff > 0,
