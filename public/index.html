@@ -2904,6 +2904,8 @@
 				
 				// Créer les colonnes d'indicateurs de processeurs
 				this.createProcessorColumns();
+				
+				this.storeAllInitialPositions();
 			}
 			
 			// Créer les colonnes d'indicateurs pour les processeurs
@@ -3205,6 +3207,7 @@
 					);
 				}
 			}
+			
 			// Créer la tête du robot
 			createRobotHead() {
 				// Groupe pour la tête qui sera positionnée au-dessus du corps
@@ -3285,6 +3288,7 @@
 				
 				// Ajouter aux parties du corps
 				this.bodyParts.push(this.headBase, this.dome, this.lens, this.cannonBarrel);
+				this.storeAllInitialPositions();
 			}
 			
 			// Ajouter des détails au canon
