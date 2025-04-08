@@ -1959,6 +1959,9 @@
 			
 			// Méthode pour gérer les collisions
 			handleCollisions(collisions, oldPosition) {
+			
+				this.storeAllInitialPositions();
+				
 				// Séparer les collisions par type
 				const blockingCollisions = [];
 				const processorCollisions = [];
