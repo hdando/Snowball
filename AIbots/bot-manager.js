@@ -81,22 +81,25 @@ class BotManager {
         
         // Générer une position aléatoire pour le bot
         const position = this.generateRandomPosition();
+        const randomRotation = Math.random() * Math.PI * 2;
+        
+        // Créer le vecteur de direction avec Three.js
+        const directionVector = new THREE.Vector3(0, 0, -1).applyAxisAngle(
+          new THREE.Vector3(0, 1, 0), 
+          randomRotation
+        );
         
         // Ajouter directement le bot à l'état du jeu
         this.gameState.players[botId] = {
           id: botId,
-          position: position, // Maintenir format simple pour compatibilité
-          rotation: Math.random() * Math.PI * 2,
-          // Direction en utilisant Three.js
-          direction: new THREE.Vector3(0, 0, -1).applyAxisAngle(
-            new THREE.Vector3(0, 1, 0), 
-            Math.random() * Math.PI * 2
-          );
-		  direction: {
-			  x: directionVector.x,
-			  y: directionVector.y,
-			  z: directionVector.z
-		  },
+          position: position,
+          rotation: randomRotation,
+          // Convertir le vecteur Three.js en objet simple
+          direction: {
+            x: directionVector.x,
+            y: directionVector.y,
+            z: directionVector.z
+          },
           stats: this.getDefaultPlayerStats(),
           hp: 100,
           maxHp: 100,
@@ -412,6 +415,8 @@ class BotManager {
         // Générer une position et direction avec Three.js
         const randomPosition = this.generateRandomPosition();
         const randomRotation = Math.random() * Math.PI * 2;
+        
+        // Créer le vecteur de direction avec Three.js
         const direction = new THREE.Vector3(0, 0, -1)
           .applyAxisAngle(new THREE.Vector3(0, 1, 0), randomRotation);
         
@@ -420,10 +425,10 @@ class BotManager {
           position: randomPosition,
           rotation: randomRotation,
           direction: {
-			  x: direction.x,
-			  y: direction.y,
-			  z: direction.z
-			}, 
+            x: direction.x,
+            y: direction.y,
+            z: direction.z
+          },
           stats: this.getDefaultPlayerStats(),
           hp: 100,
           maxHp: 100,
@@ -574,22 +579,24 @@ class BotManager {
       
       // Si collision détectée, essayer des directions alternatives
       if (willCollide) {
-        // Essayer plusieurs directions pour trouver un chemin libre
-        const potentialDirections = [
-          new THREE.Vector3().setFromSpherical(
-            new THREE.Spherical(1, Math.PI/2, botRotation + Math.PI/4) // 45° droite
-          ),
-          new THREE.Vector3().setFromSpherical(
-            new THREE.Spherical(1, Math.PI/2, botRotation - Math.PI/4) // 45° gauche
-          ),
-          new THREE.Vector3().setFromSpherical(
-            new THREE.Spherical(1, Math.PI/2, botRotation + Math.PI/2) // 90° droite
-          ),
-          new THREE.Vector3().setFromSpherical(
-            new THREE.Spherical(1, Math.PI/2, botRotation - Math.PI/2) // 90° gauche
-          ),
-          botDirection.clone().negate() // Inverse
+        // Créer des directions alternatives
+        const potentialAngles = [
+          botRotation + Math.PI/4,  // 45° droite
+          botRotation - Math.PI/4,  // 45° gauche
+          botRotation + Math.PI/2,  // 90° droite
+          botRotation - Math.PI/2,  // 90° gauche
+          botRotation + Math.PI     // Inverse
         ];
+        
+        // Convertir les angles en vecteurs
+        const potentialDirections = potentialAngles.map(angle => {
+          const dir = new THREE.Vector3(
+            Math.sin(angle),
+            0,
+            Math.cos(angle)
+          );
+          return dir;
+        });
         
         let foundValidDirection = false;
         
