@@ -1943,8 +1943,13 @@
 				// Vérifier les collisions
 				const collisions = this.collisionSystem.checkCollisionForObject(this);
 				
-				// Traiter les collisions
-				this.handleCollisions(collisions, oldPosition);
+			    // Traiter les collisions
+				if (collisions.length > 0) {
+					this.handleCollisions(collisions, oldPosition);
+					
+					// Réinitialiser les segments de chenilles UNIQUEMENT après avoir résolu toutes les collisions
+					this.resetTrackSegmentsToInitialPositions();
+				}
 				
 			    // Si c'est le joueur principal, envoyer la mise à jour au serveur
 				if (this.isMainPlayer && (keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight)) {
@@ -1960,8 +1965,6 @@
 			// Méthode pour gérer les collisions
 			handleCollisions(collisions, oldPosition) {
 			
-				this.storeAllInitialPositions();
-				
 				// Séparer les collisions par type
 				const blockingCollisions = [];
 				const processorCollisions = [];
@@ -1998,7 +2001,6 @@
 				if (blockingCollisions.length > 0) {
 					this.handlePhysicalCollisions(blockingCollisions, oldPosition);
 				}
-				this.resetTrackSegmentsToInitialPositions();
 			}
 
 			handlePlayerCollisions(playerCollisions, oldPosition) {
