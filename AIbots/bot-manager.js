@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const THREE = require('three'); // Importer Three.js
 
 class BotManager {
   constructor(io, gameState) {
@@ -80,13 +81,25 @@ class BotManager {
         
         // Générer une position aléatoire pour le bot
         const position = this.generateRandomPosition();
+        const randomRotation = Math.random() * Math.PI * 2;
+        
+        // Créer le vecteur de direction avec Three.js
+        const directionVector = new THREE.Vector3(0, 0, -1).applyAxisAngle(
+          new THREE.Vector3(0, 1, 0), 
+          randomRotation
+        );
         
         // Ajouter directement le bot à l'état du jeu
         this.gameState.players[botId] = {
           id: botId,
           position: position,
-          rotation: Math.random() * Math.PI * 2,
-          direction: { x: 0, y: 0, z: -1 },
+          rotation: randomRotation,
+          // Convertir le vecteur Three.js en objet simple
+          direction: {
+            x: directionVector.x,
+            y: directionVector.y,
+            z: directionVector.z
+          },
           stats: this.getDefaultPlayerStats(),
           hp: 100,
           maxHp: 100,
@@ -137,8 +150,16 @@ class BotManager {
       
       // Pour chaque processeur, vérifier si le bot est assez proche
       Object.entries(this.gameState.processors).forEach(([processorId, processor]) => {
-        // Calculer la distance
-        const distance = this.calculateDistance(bot.position, processor.position);
+        // Convertir en Vector3 pour utiliser les méthodes de Three.js
+        const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
+        const processorPosition = new THREE.Vector3(
+          processor.position.x, 
+          processor.position.y, 
+          processor.position.z
+        );
+        
+        // Calculer la distance avec Three.js
+        const distance = botPosition.distanceTo(processorPosition);
         
         // Distance de collecte (ajustée pour l'échelle du bot)
         let collectDistance = 2;
@@ -167,8 +188,15 @@ class BotManager {
       
       // Pour chaque canon, vérifier si le bot est assez proche
       Object.entries(this.gameState.cannons).forEach(([cannonId, cannon]) => {
-        // Calculer la distance
-        const distance = this.calculateDistance(bot.position, cannon.position);
+        // Utiliser Three.js pour le calcul de distance
+        const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
+        const cannonPosition = new THREE.Vector3(
+          cannon.position.x, 
+          cannon.position.y, 
+          cannon.position.z
+        );
+        
+        const distance = botPosition.distanceTo(cannonPosition);
         
         // Distance de collecte (ajustée pour l'échelle du bot)
         let collectDistance = 2;
@@ -340,10 +368,18 @@ class BotManager {
     const maxRadius = mapRadius * 0.95;
     const radius = minRadius + Math.random() * (maxRadius - minRadius);
     
+    // Utiliser Three.js pour générer le vecteur
+    const randomVector = new THREE.Vector3(
+      Math.cos(angle) * radius,
+      0, // Y = 0 (hauteur au sol)
+      Math.sin(angle) * radius
+    );
+    
+    // Retourner un objet simple pour compatibilité
     return {
-      x: Math.cos(angle) * radius,
-      y: 0,  // Hauteur au sol (sera ajustée pour les projectiles)
-      z: Math.sin(angle) * radius
+      x: randomVector.x,
+      y: randomVector.y,
+      z: randomVector.z
     };
   }
   
@@ -375,11 +411,24 @@ class BotManager {
         
         // Réinsérer le bot dans l'état du jeu
         const botName = botId.split('-')[1] || 'BOT';
+        
+        // Générer une position et direction avec Three.js
+        const randomPosition = this.generateRandomPosition();
+        const randomRotation = Math.random() * Math.PI * 2;
+        
+        // Créer le vecteur de direction avec Three.js
+        const direction = new THREE.Vector3(0, 0, -1)
+          .applyAxisAngle(new THREE.Vector3(0, 1, 0), randomRotation);
+        
         this.gameState.players[botId] = {
           id: botId,
-          position: this.generateRandomPosition(),
-          rotation: Math.random() * Math.PI * 2,
-          direction: { x: 0, y: 0, z: -1 },
+          position: randomPosition,
+          rotation: randomRotation,
+          direction: {
+            x: direction.x,
+            y: direction.y,
+            z: direction.z
+          },
           stats: this.getDefaultPlayerStats(),
           hp: 100,
           maxHp: 100,
@@ -419,15 +468,17 @@ class BotManager {
     this.checkForStuckBots();
   }
   
-  // Calcule la distance entre 2 positions
+  // Calcule la distance entre 2 positions en utilisant Three.js
   calculateDistance(pos1, pos2) {
     if (!pos1 || !pos2) return Infinity;
-    return Math.sqrt(
-      Math.pow(pos2.x - pos1.x, 2) +
-      Math.pow(pos2.z - pos1.z, 2)
-    );
+    
+    const vector1 = new THREE.Vector3(pos1.x, pos1.y, pos1.z);
+    const vector2 = new THREE.Vector3(pos2.x, pos2.y, pos2.z);
+    
+    return vector1.distanceTo(vector2);
   }
 
+  // Process bot inputs avec Three.js
   processBotInputs() {
     Object.entries(this.botInputs).forEach(([botId, inputs]) => {
       const bot = this.gameState.players[botId];
@@ -437,59 +488,59 @@ class BotManager {
       const botSpeed = bot.stats?.speed || 0.04;
       const botRotationSpeed = 0.02;
       
-      // Calculate new position and rotation
-      let newPosition = {...bot.position};
-      let newRotation = bot.rotation;
-      let newDirection = {...bot.direction};
+      // Convertir la position et la rotation en objets Three.js
+      const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
+      const botDirection = new THREE.Vector3(bot.direction.x, bot.direction.y, bot.direction.z);
+      let botRotation = bot.rotation;
       
-      // Apply rotations
+      // Mémoriser la position d'origine pour les collisions
+      const originalPosition = botPosition.clone();
+      
+      // Appliquer les rotations
       if (inputs.left) {
-        newRotation += botRotationSpeed;
-        // Recalculate direction
-        newDirection = {
-          x: Math.sin(newRotation),
-          y: 0,
-          z: Math.cos(newRotation)
-        };
+        botRotation += botRotationSpeed;
+        // Recalculer la direction avec Three.js
+        botDirection.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), botRotation);
       }
       if (inputs.right) {
-        newRotation -= botRotationSpeed;
-        // Recalculate direction
-        newDirection = {
-          x: Math.sin(newRotation),
-          y: 0,
-          z: Math.cos(newRotation)
-        };
+        botRotation -= botRotationSpeed;
+        // Recalculer la direction avec Three.js
+        botDirection.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), botRotation);
       }
       
-      // Save original position for collision detection
-      const originalPosition = {...bot.position};
-      
-      // Calculate potential new position
+      // Calculer la nouvelle position potentielle
+      const newPosition = botPosition.clone();
       if (inputs.forward) {
-        newPosition.x += newDirection.x * botSpeed;
-        newPosition.z += newDirection.z * botSpeed;
+        // Ajouter un vecteur de direction mis à l'échelle par la vitesse
+        newPosition.add(botDirection.clone().multiplyScalar(botSpeed));
       }
       if (inputs.backward) {
-        newPosition.x -= newDirection.x * botSpeed;
-        newPosition.z -= newDirection.z * botSpeed;
+        // Soustraire un vecteur de direction mis à l'échelle par la vitesse
+        newPosition.sub(botDirection.clone().multiplyScalar(botSpeed));
       }
       
-      // Check for collisions with other players and structures
+      // Vérifier les collisions
       let willCollide = false;
       
-      // Check against other players
+      // Vérifier les collisions avec les autres joueurs
       Object.entries(this.gameState.players).forEach(([playerId, player]) => {
         if (playerId === botId || !player.isAlive) return;
         
-        const distance = this.calculateDistance(newPosition, player.position);
+        const playerPosition = new THREE.Vector3(
+          player.position.x, 
+          player.position.y, 
+          player.position.z
+        );
         
-        // Adjust collision radius based on player scale and processor count
+        // Calculer la distance avec Three.js
+        const distance = newPosition.distanceTo(playerPosition);
+        
+        // Ajuster les rayons de collision en fonction de l'échelle
         let playerScale = 1.0;
         if (player.stats && player.stats.processorCounts) {
           const totalProcessors = Object.values(player.stats.processorCounts)
             .reduce((sum, count) => sum + count, 0);
-          playerScale = 1.0 + (totalProcessors * 0.005); // Identique à la logique dans Player
+          playerScale = 1.0 + (totalProcessors * 0.005);
         }
         
         let botScale = 1.0;
@@ -499,7 +550,7 @@ class BotManager {
           botScale = 1.0 + (totalProcessors * 0.005);
         }
         
-        // Combiner les rayons des deux joueurs
+        // Rayon de collision combiné
         const combinedRadius = (0.75 * botScale) + (0.75 * playerScale);
         
         if (distance < combinedRadius) {
@@ -507,12 +558,18 @@ class BotManager {
         }
       });
       
-      // Check against structures
+      // Vérifier les collisions avec les structures
       Object.values(this.gameState.structures).forEach(structure => {
         if (structure.destroyed) return;
         
-        const distance = this.calculateDistance(newPosition, structure.position);
-        // Different collision radius based on structure type
+        const structurePosition = new THREE.Vector3(
+          structure.position.x, 
+          structure.position.y, 
+          structure.position.z
+        );
+        
+        const distance = newPosition.distanceTo(structurePosition);
+        // Rayon de collision différent selon le type de structure
         const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
         
         if (distance < collisionRadius) {
@@ -520,34 +577,47 @@ class BotManager {
         }
       });
       
-      // If collision detected, try alternative directions
+      // Si collision détectée, essayer des directions alternatives
       if (willCollide) {
-        // Try multiple directions to find a clear path
-        const potentialDirections = [
-          {x: Math.sin(newRotation + Math.PI/4), z: Math.cos(newRotation + Math.PI/4)},  // 45° right
-          {x: Math.sin(newRotation - Math.PI/4), z: Math.cos(newRotation - Math.PI/4)},  // 45° left
-          {x: Math.sin(newRotation + Math.PI/2), z: Math.cos(newRotation + Math.PI/2)},  // 90° right
-          {x: Math.sin(newRotation - Math.PI/2), z: Math.cos(newRotation - Math.PI/2)},  // 90° left
-          {x: -newDirection.x, z: -newDirection.z}  // Reverse
+        // Créer des directions alternatives
+        const potentialAngles = [
+          botRotation + Math.PI/4,  // 45° droite
+          botRotation - Math.PI/4,  // 45° gauche
+          botRotation + Math.PI/2,  // 90° droite
+          botRotation - Math.PI/2,  // 90° gauche
+          botRotation + Math.PI     // Inverse
         ];
+        
+        // Convertir les angles en vecteurs
+        const potentialDirections = potentialAngles.map(angle => {
+          const dir = new THREE.Vector3(
+            Math.sin(angle),
+            0,
+            Math.cos(angle)
+          );
+          return dir;
+        });
         
         let foundValidDirection = false;
         
         for (const dir of potentialDirections) {
-          const testPosition = {
-            x: originalPosition.x + dir.x * botSpeed,
-            y: originalPosition.y,
-            z: originalPosition.z + dir.z * botSpeed
-          };
+          // Position de test en utilisant Three.js
+          const testPosition = originalPosition.clone().addScaledVector(dir, botSpeed);
           
-          // Check if direction is clear
+          // Vérifier si la direction est libre
           let directionClear = true;
           
-          // Check against players with improved collision detection
+          // Vérifier les joueurs
           Object.entries(this.gameState.players).forEach(([playerId, player]) => {
             if (playerId === botId || !player.isAlive) return;
             
-            // Calcul des rayons de collision plus précis
+            const playerPosition = new THREE.Vector3(
+              player.position.x, 
+              player.position.y, 
+              player.position.z
+            );
+            
+            // Calculer les rayons de collision précis
             let playerScale = 1.0;
             if (player.stats && player.stats.processorCounts) {
               const totalProcessors = Object.values(player.stats.processorCounts)
@@ -562,188 +632,205 @@ class BotManager {
               botScale = 1.0 + (totalProcessors * 0.005);
             }
             
-            // Rayon combiné basé sur la taille des deux joueurs
+            // Rayon combiné basé sur la taille des joueurs
             const combinedRadius = (0.75 * botScale) + (0.75 * playerScale);
             
-            if (this.calculateDistance(testPosition, player.position) < combinedRadius) {
+            if (testPosition.distanceTo(playerPosition) < combinedRadius) {
               directionClear = false;
             }
           });
           
-          // Check against structures
+          // Vérifier les structures
           Object.values(this.gameState.structures).forEach(structure => {
             if (structure.destroyed) return;
+            
+            const structurePosition = new THREE.Vector3(
+              structure.position.x, 
+              structure.position.y, 
+              structure.position.z
+            );
+            
             const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
-            if (this.calculateDistance(testPosition, structure.position) < collisionRadius) {
+            
+            if (testPosition.distanceTo(structurePosition) < collisionRadius) {
               directionClear = false;
             }
           });
           
           if (directionClear) {
-            newPosition = testPosition;
+            // Utiliser la nouvelle position
+            newPosition.copy(testPosition);
             foundValidDirection = true;
             break;
           }
         }
         
-        // If no valid direction found, stay in place
+        // Si aucune direction valide n'est trouvée, rester sur place
         if (!foundValidDirection) {
-          newPosition = originalPosition;
+          newPosition.copy(originalPosition);
         }
       }
       
-      // Handle firing
+      // Gérer le tir
       if (inputs.fire) {
         this.handleBotShoot(botId);
       }
       
-      // Update bot position and rotation in game state
-      this.gameState.players[botId].position = newPosition;
-      this.gameState.players[botId].rotation = newRotation;
-      this.gameState.players[botId].direction = newDirection;
-      
-      // Inform all clients
-      this.io.emit('playerMoved', {
-        id: botId,
-        position: newPosition,
-        rotation: newRotation,
-        direction: newDirection
-      });
-    });
-  }
-
-  // Gérer le tir d'un bot
-  handleBotShoot(botId) {
-    const bot = this.gameState.players[botId];
-    if (!bot || !bot.isAlive) return;
-    
-    // Vérifier le cooldown de tir (utiliser la même règle que pour les joueurs)
-    const currentTime = Date.now();
-    const lastShootTime = bot.lastShootTime || 0;
-    const attackSpeed = bot.stats?.attackSpeed || 0.5;
-    const cooldown = 1000 / attackSpeed; // Cooldown en millisecondes
-    
-    if (currentTime - lastShootTime < cooldown) {
-      return; // Encore en cooldown
-    }
-    
-    // Mettre à jour le dernier temps de tir
-    bot.lastShootTime = currentTime;
-    
-    // Calculer l'échelle du bot basée sur le nombre de processeurs collectés
-    let botScale = 1.0;
-    if (bot.stats && bot.stats.processorCounts) {
-      const totalProcessors = Object.values(bot.stats.processorCounts)
-        .reduce((sum, count) => sum + count, 0);
-      botScale = 1.0 + (totalProcessors * 0.005); // 0.5% par processeur
-    }
-    
-    // Tableau pour stocker tous les projectiles à créer
-    const projectilesToCreate = [];
-    
-    // 1. Toujours tirer avec le canon principal
-    const mainCannonPosition = this.calculateMainCannonPosition(bot, botScale);
-    projectilesToCreate.push({
-      position: mainCannonPosition,
-      direction: {...bot.direction}
-    });
-    
-    // 2. Tirer avec tous les canons latéraux disponibles
-    const sideCannonCount = this.botSideCannons[botId] || 0;
-    for (let i = 0; i < sideCannonCount; i++) {
-      const sideCannonPosition = this.calculateSideCannonPosition(bot, botScale, i);
-      projectilesToCreate.push({
-        position: sideCannonPosition,
-        direction: {...bot.direction} // Même direction que le bot
-      });
-    }
-    
-    // Créer tous les projectiles
-    projectilesToCreate.forEach(projectileInfo => {
-      const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      
-      // Ajouter le projectile à l'état du jeu
-      this.gameState.projectiles[projectileId] = {
-        id: projectileId,
-        ownerId: botId,
-        position: projectileInfo.position,
-        direction: projectileInfo.direction,
-        damage: bot.stats?.attack || 10,
-        range: bot.stats?.range || 10,
-        createdAt: currentTime
+      // Mettre à jour la position, rotation et direction du bot dans l'état du jeu
+      bot.position = {
+        x: newPosition.x,
+        y: newPosition.y,
+        z: newPosition.z
+      };
+      bot.rotation = botRotation;
+      bot.direction = {
+        x: botDirection.x,
+        y: botDirection.y,
+        z: botDirection.z
       };
       
-      // Informer tous les clients du nouveau projectile
-      this.io.emit('projectileCreated', {
-        id: projectileId,
-        ownerId: botId,
-        position: projectileInfo.position,
-        direction: projectileInfo.direction,
-        damage: bot.stats?.attack || 10,
-        range: bot.stats?.range || 10
+      // Informer tous les clients
+      this.io.emit('playerMoved', {
+        id: botId,
+        position: bot.position,
+        rotation: botRotation,
+        direction: bot.direction
       });
     });
   }
-
-  // Calculer la position du canon principal
-  calculateMainCannonPosition(bot, botScale) {
-    // Hauteur de la tête du robot
-    const headHeight = 1.3 * botScale;
-    
-    // Position du bout du canon (valeur négative car orienté vers l'avant)
-    const barrelTipZ = -0.7 * botScale; // Augmenté à -0.7 pour éviter les collisions immédiates
-    
-    // Calculer la position mondiale en tenant compte de la rotation du bot
-    const worldY = bot.position.y + headHeight;
-    const worldX = bot.position.x + (barrelTipZ * Math.sin(bot.rotation));
-    const worldZ = bot.position.z + (barrelTipZ * Math.cos(bot.rotation));
-    
-    return {
-      x: worldX,
-      y: worldY,
-      z: worldZ
-    };
+  
+// Gérer le tir d'un bot avec Three.js
+handleBotShoot(botId) {
+  const bot = this.gameState.players[botId];
+  if (!bot || !bot.isAlive) return;
+  
+  // Vérifier le cooldown de tir (un seul cooldown pour tous les canons)
+  const currentTime = Date.now();
+  const lastShootTime = bot.lastShootTime || 0;
+  const attackSpeed = bot.stats?.attackSpeed || 0.5;
+  const cooldown = 1000 / attackSpeed; // Cooldown en millisecondes
+  
+  if (currentTime - lastShootTime < cooldown) {
+    return; // Encore en cooldown
   }
-
-  // Calculer la position d'un canon latéral
-  calculateSideCannonPosition(bot, botScale, cannonIndex) {
-    // Déterminer le côté (gauche ou droit) et la rangée
-    const isLeftSide = cannonIndex % 2 === 0; // Pair = gauche, Impair = droite
-    const rowIndex = Math.floor(cannonIndex / 2); // Détermine la rangée
-    
-    // Positions de base (avant application de l'échelle)
-    const xOffset = (isLeftSide ? -0.25 : 0.25) * botScale;
-    const yOffset = (0.9 - (rowIndex * 0.45)) * botScale;
-    const zOffset = -0.2 * botScale;
-    
-    // Position du bout du canon latéral (distance augmentée pour éviter les collisions immédiates)
-    const localBarrelZ = -0.5 * botScale;
-    
-    // Position dans l'espace 3D
-    const headHeight = 1.3 * botScale; // Hauteur de la tête du robot
-    const worldY = bot.position.y + headHeight + yOffset;
-    
-    // Calculer la position mondiale en tenant compte de la rotation du bot
-    const cosAngle = Math.cos(bot.rotation);
-    const sinAngle = Math.sin(bot.rotation);
-    
-    // Composante X (latérale)
-    const worldX = bot.position.x + 
-                  (xOffset * cosAngle) + 
-                  ((zOffset + localBarrelZ) * sinAngle);
-    
-    // Composante Z (avant/arrière)
-    const worldZ = bot.position.z + 
-                  (xOffset * sinAngle) - 
-                  ((zOffset + localBarrelZ) * cosAngle);
-    
-    return {
-      x: worldX,
-      y: worldY,
-      z: worldZ
-    };
+  
+  // Mettre à jour le dernier temps de tir
+  bot.lastShootTime = currentTime;
+  
+  // Calculer l'échelle du bot
+  let botScale = 1.0;
+  if (bot.stats && bot.stats.processorCounts) {
+    const totalProcessors = Object.values(bot.stats.processorCounts)
+      .reduce((sum, count) => sum + count, 0);
+    botScale = 1.0 + (totalProcessors * 0.005);
   }
+  
+  // Convertir la position et direction en objets Three.js
+  const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
+  const botRotation = new THREE.Euler(0, bot.rotation, 0, 'XYZ');
+  const botDirection = new THREE.Vector3(bot.direction.x, bot.direction.y, bot.direction.z);
+  
+  // 1. TIRER DEPUIS LE CANON PRINCIPAL
+  this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, false, 0, 0);
+  
+  // 2. TIRER DEPUIS TOUS LES CANONS LATÉRAUX
+  const sideCannonCount = this.botSideCannons[botId] || 0;
+  
+  // Parcourir tous les canons latéraux
+  for (let i = 0; i < sideCannonCount; i++) {
+    // Déterminer s'il s'agit d'un canon gauche ou droit
+    const isLeftSide = i % 2 === 0;
+    const rowIndex = Math.floor(i / 2);
+    
+    // Tirer depuis ce canon latéral
+    this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, true, isLeftSide, rowIndex);
+  }
+}
 
+	// Nouvelle méthode auxiliaire pour tirer depuis un canon spécifique
+	fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, isSideCannon, isLeftSide, rowIndex) {
+	  // Créer l'ID du projectile
+	  const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}-${isSideCannon ? 'side' : 'main'}-${isLeftSide ? 'left' : 'right'}-${rowIndex}`;
+	  
+	  let projectilePosition = new THREE.Vector3();
+	  
+	  if (isSideCannon) {
+		// Position pour les canons latéraux avec Three.js
+		const xOffset = (isLeftSide ? -0.25 : 0.25) * botScale;
+		const yOffset = (0.9 - (rowIndex * 0.45)) * botScale;
+		const zOffset = -0.2 * botScale;
+		
+		// Position locale du bout du canon
+		const localBarrelZ = -0.36 * botScale;
+		
+		// Créer la position locale puis la transformer en position mondiale
+		const localPosition = new THREE.Vector3(xOffset, yOffset, zOffset + localBarrelZ);
+		
+		// Appliquer la rotation du bot
+		localPosition.applyEuler(botRotation);
+		
+		// Position mondiale = position du bot + position locale transformée
+		projectilePosition.copy(botPosition).add(localPosition);
+		
+		// Ajuster la hauteur Y
+		const headHeight = 1.3 * botScale;
+		projectilePosition.y = botPosition.y + headHeight + yOffset;
+	  } else {
+		// Position pour le canon principal
+		const headHeight = 1.3 * botScale;
+		const barrelTipZ = -0.4 * botScale;
+		
+		// Créer un vecteur pour le bout du canon dans l'espace local
+		const localBarrelTip = new THREE.Vector3(0, 0, barrelTipZ);
+		
+		// Transformer selon la rotation du bot
+		localBarrelTip.applyEuler(botRotation);
+		
+		// Position mondiale
+		projectilePosition.copy(botPosition).add(localBarrelTip);
+		projectilePosition.y = botPosition.y + headHeight;
+	  }
+	  
+	  const bot = this.gameState.players[botId];
+	  const currentTime = Date.now();
+	  
+	  // Ajouter le projectile à l'état du jeu
+	  this.gameState.projectiles[projectileId] = {
+		id: projectileId,
+		ownerId: botId,
+		position: {
+		  x: projectilePosition.x,
+		  y: projectilePosition.y,
+		  z: projectilePosition.z
+		},
+		direction: {
+		  x: botDirection.x,
+		  y: botDirection.y,
+		  z: botDirection.z
+		},
+		damage: bot.stats?.attack || 10,
+		range: bot.stats?.range || 10,
+		createdAt: currentTime
+	  };
+	  
+	  // Informer tous les clients du nouveau projectile
+	  this.io.emit('projectileCreated', {
+		id: projectileId,
+		ownerId: botId,
+		position: {
+		  x: projectilePosition.x,
+		  y: projectilePosition.y,
+		  z: projectilePosition.z
+		},
+		direction: {
+		  x: botDirection.x,
+		  y: botDirection.y,
+		  z: botDirection.z
+		},
+		damage: bot.stats?.attack || 10,
+		range: bot.stats?.range || 10
+	  });
+	}
   // Vérifier si des bots sont bloqués
   checkForStuckBots() {
     Object.keys(this.botInstances).forEach(botId => {
@@ -755,11 +842,11 @@ class BotManager {
         const lastPos = this.lastPositions[botId];
         const currentPos = bot.position;
         
-        // Calculer la distance parcourue
-        const distance = Math.sqrt(
-          Math.pow(currentPos.x - lastPos.x, 2) + 
-          Math.pow(currentPos.z - lastPos.z, 2)
-        );
+        // Utiliser Three.js pour calculer la distance
+        const lastVector = new THREE.Vector3(lastPos.x, lastPos.y, lastPos.z);
+        const currentVector = new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z);
+        
+        const distance = lastVector.distanceTo(currentVector);
         
         // Si la distance est très petite, le bot est peut-être bloqué
         if (distance < 0.01) {
@@ -787,22 +874,28 @@ class BotManager {
     const bot = this.gameState.players[botId];
     if (!bot) return;
     
-    // Générer une nouvelle direction aléatoire
+    // Générer une nouvelle direction aléatoire avec Three.js
     const randomAngle = Math.random() * Math.PI * 2;
-    const newDirection = {
-      x: Math.sin(randomAngle),
-      y: 0,
-      z: Math.cos(randomAngle)
-    };
+    const newDirection = new THREE.Vector3(
+      Math.sin(randomAngle),
+      0,
+      Math.cos(randomAngle)
+    );
     
     // Appliquer la nouvelle direction et rotation
     bot.rotation = randomAngle;
-    bot.direction = newDirection;
+    bot.direction = {
+      x: newDirection.x,
+      y: newDirection.y,
+      z: newDirection.z
+    };
     
-    // Forcer un mouvement dans cette direction
+    // Forcer un mouvement dans cette direction (vitesse boostée pour s'échapper)
     const botSpeed = bot.stats?.speed || 0.02;
-    bot.position.x += newDirection.x * botSpeed * 10; // Boosted speed to escape stuck position
-    bot.position.z += newDirection.z * botSpeed * 10;
+    const moveVector = newDirection.clone().multiplyScalar(botSpeed * 10);
+    
+    bot.position.x += moveVector.x;
+    bot.position.z += moveVector.z;
     
     // Informer les clients
     this.io.emit('playerMoved', {
