@@ -957,7 +957,7 @@
                 
                 // Propriétés de mouvement
                 this.direction = direction.normalize();
-                this.speed = 1;
+                this.speed = 0.01; // vitesse du projectile
                 this.distance = 0;
                 this.maxDistance = owner.range;
                 
@@ -1009,6 +1009,8 @@
 				this.light.position.copy(this.group.position);
 				
 				// Faire tourner légèrement l'obus pour un effet réaliste
+				this.mesh.rotation.x += 0.1;
+				this.mesh.rotation.y += 0.1;
 				this.mesh.rotation.z += 0.1;
 				
 				// Mettre à jour la distance parcourue (distance réelle)
