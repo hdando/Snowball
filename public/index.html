@@ -1571,7 +1571,7 @@
                 // Ajouter le sol au système de collision
                 this.floor.userData.type = 'floor';
                 this.collider = this.floor;  // Le collider est le mesh lui-même
-                this.hasCollision = true;    // Activer les collisions
+                this.hasCollision = false;    // Activer les collisions
                 this.userData = { type: 'floor' };
                 this.collisionSystem.addObject(this);
                 
