@@ -1026,7 +1026,13 @@
 				for (const obj of collisions) {
 					// Ignorer le propriétaire du projectile
 					if (obj === this.owner) continue;
-					
+
+					// AJOUTER CETTE VÉRIFICATION: Comparer les IDs pour les joueurs (bots inclus)
+					if (this.owner.playerId && obj.playerId && this.owner.playerId === obj.playerId) continue;
+
+					// AJOUTER CETTE VÉRIFICATION: Comparer les IDs pour les projectiles
+					if (this.owner.playerId && obj.ownerId && this.owner.playerId === obj.ownerId) continue;
+
 					// Vérifier si c'est un objet avec lequel on peut collisionner
 					if (obj.userData && (obj.userData.type === 'wall' || obj.userData.type === 'floor' || 
 										 obj.userData.type === 'structure' || obj.userData.type === 'tree')) {
