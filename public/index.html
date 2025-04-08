@@ -1963,7 +1963,7 @@
 				const blockingCollisions = [];
 				const processorCollisions = [];
 				const cannonCollisions = [];
-				const playerCollisions = [];  // Nouveau tableau pour les collisions avec les joueurs
+				const playerCollisions = [];  
 				
 				collisions.forEach(obj => {
 					if (obj instanceof Processor) {
@@ -1995,6 +1995,7 @@
 				if (blockingCollisions.length > 0) {
 					this.handlePhysicalCollisions(blockingCollisions, oldPosition);
 				}
+				this.resetTrackSegmentsToInitialPositions();
 			}
 
 			handlePlayerCollisions(playerCollisions, oldPosition) {
