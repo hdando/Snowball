@@ -755,45 +755,54 @@ class BotManager {
 	  // Bot réel pour récupérer les statistiques
 	  const bot = this.gameState.players[botId];
 	  
-	  // CORRECTION: Création correcte de la matrice de transformation
-	  // Utiliser une approche plus directe qui ne remplace pas la rotation
-	  const position = new THREE.Vector3(botPosition.x, botPosition.y, botPosition.z);
-	  const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, botRotation, 0));
+	  // Position finale du projectile
+	  let projectilePosition = {x: 0, y: 0, z: 0};
 	  
-	  let projectilePosition = new THREE.Vector3();
+	  // APPROCHE TRÈS SIMPLE: utiliser directement la direction pour calculer le point de départ
+	  // Décalage en avant dans la direction du bot (pour le canon principal)
+	  const forwardDistance = 1.0 * botScale;
 	  
 	  if (isSideCannon) {
-		// Positions pour les canons latéraux
-		const xOffset = (isLeftSide ? -0.25 : 0.25) * botScale;
-		const yOffset = (0.9 - (rowIndex * 0.45)) * botScale;
-		const zOffset = -0.2 * botScale;
+		// Pour les canons latéraux
+		const sideOffset = (isLeftSide ? -0.3 : 0.3) * botScale;
+		const heightOffset = 1.3 * botScale; // Hauteur de la tête
 		
-		// Position locale de l'extrémité du canon avec un décalage pour éviter les collisions
-		const localPosition = new THREE.Vector3(xOffset, 1.3 * botScale + yOffset, zOffset - 0.4 * botScale);
+		// Calcul de la position perpendiculaire à la direction
+		// Vecteur perpendiculaire à la direction (vers la gauche)
+		const perpVector = {
+		  x: -botDirection.z,
+		  y: 0,
+		  z: botDirection.x
+		};
 		
-		// Transformer la position locale avec la rotation
-		localPosition.applyQuaternion(quaternion);
+		// Position de base: position du bot + hauteur
+		projectilePosition = {
+		  x: botPosition.x,
+		  y: botPosition.y + heightOffset,
+		  z: botPosition.z
+		};
 		
-		// Ajouter la position du bot
-		projectilePosition.copy(position).add(localPosition);
+		// Ajouter le décalage latéral (gauche/droite)
+		projectilePosition.x += perpVector.x * sideOffset;
+		projectilePosition.z += perpVector.z * sideOffset;
+		
+		// Ajouter le décalage avant (dans la direction)
+		projectilePosition.x += botDirection.x * forwardDistance;
+		projectilePosition.z += botDirection.z * forwardDistance;
 	  } else {
-		// Pour le canon principal, simuler exactement ce qui se passe côté client
-		// Création d'une position locale au bout du canon, avec un léger décalage supplémentaire
-		const localPosition = new THREE.Vector3(0, 0, -0.8 * botScale);
+		// Canon principal: décalage direct dans la direction du bot
+		const heightOffset = 1.3 * botScale; // Hauteur de la tête
 		
-		// Transformer avec la rotation
-		localPosition.applyQuaternion(quaternion);
-		
-		// Position mondiale = position du bot + position locale transformée
-		projectilePosition.copy(position).add(localPosition);
-		
-		// Ajuster la hauteur Y pour correspondre au canon (sur la tête du robot)
-		projectilePosition.y = botPosition.y + 1.3 * botScale;
+		projectilePosition = {
+		  x: botPosition.x + (botDirection.x * forwardDistance),
+		  y: botPosition.y + heightOffset,
+		  z: botPosition.z + (botDirection.z * forwardDistance)
+		};
 	  }
 	  
 	  // AJOUT: Log de débogage pour vérifier la position du projectile
 	  console.log(`Bot projectile position: (${projectilePosition.x.toFixed(2)}, ${projectilePosition.y.toFixed(2)}, ${projectilePosition.z.toFixed(2)})`);
-	  console.log(`Bot position: (${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)})`);
+	  console.log(`Bot position: (${botPosition.x.toFixed(2)}, ${botPosition.y.toFixed(2)}, ${botPosition.z.toFixed(2)})`);
 	  console.log(`Direction: (${botDirection.x.toFixed(2)}, ${botDirection.y.toFixed(2)}, ${botDirection.z.toFixed(2)})`);
 	  
 	  const currentTime = Date.now();
@@ -834,7 +843,7 @@ class BotManager {
 		damage: bot.stats?.attack || 10,
 		range: bot.stats?.range || 10
 	  });
-	}	
+	}
   // Vérifier si des bots sont bloqués
   checkForStuckBots() {
     Object.keys(this.botInstances).forEach(botId => {
