@@ -699,96 +699,83 @@ class BotManager {
     });
   }
   
-// Gérer le tir d'un bot avec Three.js
-handleBotShoot(botId) {
-  const bot = this.gameState.players[botId];
-  if (!bot || !bot.isAlive) return;
-  
-  // Vérifier le cooldown de tir (un seul cooldown pour tous les canons)
-  const currentTime = Date.now();
-  const lastShootTime = bot.lastShootTime || 0;
-  const attackSpeed = bot.stats?.attackSpeed || 0.5;
-  const cooldown = 1000 / attackSpeed; // Cooldown en millisecondes
-  
-  if (currentTime - lastShootTime < cooldown) {
-    return; // Encore en cooldown
-  }
-  
-  // Mettre à jour le dernier temps de tir
-  bot.lastShootTime = currentTime;
-  
-  // Calculer l'échelle du bot
-  let botScale = 1.0;
-  if (bot.stats && bot.stats.processorCounts) {
-    const totalProcessors = Object.values(bot.stats.processorCounts)
-      .reduce((sum, count) => sum + count, 0);
-    botScale = 1.0 + (totalProcessors * 0.005);
-  }
-  
-  // Convertir la position et direction en objets Three.js
-  const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
-  const botRotation = new THREE.Euler(0, bot.rotation, 0, 'XYZ');
-  const botDirection = new THREE.Vector3(bot.direction.x, bot.direction.y, bot.direction.z);
-  
-  // 1. TIRER DEPUIS LE CANON PRINCIPAL
-  this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, false, 0, 0);
-  
-  // 2. TIRER DEPUIS TOUS LES CANONS LATÉRAUX
-  const sideCannonCount = this.botSideCannons[botId] || 0;
-  
-  // Parcourir tous les canons latéraux
-  for (let i = 0; i < sideCannonCount; i++) {
-    // Déterminer s'il s'agit d'un canon gauche ou droit
-    const isLeftSide = i % 2 === 0;
-    const rowIndex = Math.floor(i / 2);
-    
-    // Tirer depuis ce canon latéral
-    this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, true, isLeftSide, rowIndex);
-  }
-}
+	// Gérer le tir d'un bot avec Three.js
+	handleBotShoot(botId) {
+	  const bot = this.gameState.players[botId];
+	  if (!bot || !bot.isAlive) return;
+	  
+	  // Vérifier le cooldown de tir (un seul cooldown pour tous les canons)
+	  const currentTime = Date.now();
+	  const lastShootTime = bot.lastShootTime || 0;
+	  const attackSpeed = bot.stats?.attackSpeed || 0.5;
+	  const cooldown = 1000 / attackSpeed; // Cooldown en millisecondes
+	  
+	  if (currentTime - lastShootTime < cooldown) {
+		return; // Encore en cooldown
+	  }
+	  
+	  // Mettre à jour le dernier temps de tir
+	  bot.lastShootTime = currentTime;
+	  
+	  // Calculer l'échelle du bot
+	  let botScale = 1.0;
+	  if (bot.stats && bot.stats.processorCounts) {
+		const totalProcessors = Object.values(bot.stats.processorCounts)
+		  .reduce((sum, count) => sum + count, 0);
+		botScale = 1.0 + (totalProcessors * 0.005);
+	  }
+	  
+	  // Convertir la position et direction en objets Three.js
+	  const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
+	  const botRotation = new THREE.Euler(0, bot.rotation, 0, 'XYZ');
+	  const botDirection = new THREE.Vector3(bot.direction.x, bot.direction.y, bot.direction.z);
+	  
+	  // 1. TIRER DEPUIS LE CANON PRINCIPAL
+	  this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, false, 0, 0);
+	  
+	  // 2. TIRER DEPUIS TOUS LES CANONS LATÉRAUX
+	  const sideCannonCount = this.botSideCannons[botId] || 0;
+	  
+	  // Parcourir tous les canons latéraux
+	  for (let i = 0; i < sideCannonCount; i++) {
+		// Déterminer s'il s'agit d'un canon gauche ou droit
+		const isLeftSide = i % 2 === 0;
+		const rowIndex = Math.floor(i / 2);
+		
+		// Tirer depuis ce canon latéral
+		this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, true, isLeftSide, rowIndex);
+	  }
+	}
 
 	// Nouvelle méthode auxiliaire pour tirer depuis un canon spécifique
 	fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, isSideCannon, isLeftSide, rowIndex) {
 	  // Créer l'ID du projectile
-	  const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}-${isSideCannon ? 'side' : 'main'}-${isLeftSide ? 'left' : 'right'}-${rowIndex}`;
+	  const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+	  
+	  // Créer une matrice de transformation pour simuler la hiérarchie d'objets
+	  const botMatrix = new THREE.Matrix4().makeRotationY(botRotation);
+	  botMatrix.setPosition(botPosition.x, botPosition.y, botPosition.z);
 	  
 	  let projectilePosition = new THREE.Vector3();
 	  
 	  if (isSideCannon) {
-		// Position pour les canons latéraux avec Three.js
+		// Positions exactes comme dans le client pour les canons latéraux
 		const xOffset = (isLeftSide ? -0.25 : 0.25) * botScale;
 		const yOffset = (0.9 - (rowIndex * 0.45)) * botScale;
 		const zOffset = -0.2 * botScale;
 		
-		// Position locale du bout du canon
-		const localBarrelZ = -0.36 * botScale;
+		// Créer une position locale à l'extrémité du canon latéral
+		const localPosition = new THREE.Vector3(xOffset, yOffset + 1.3 * botScale, zOffset - 0.5 * botScale);
 		
-		// Créer la position locale puis la transformer en position mondiale
-		const localPosition = new THREE.Vector3(xOffset, yOffset, zOffset + localBarrelZ);
-		
-		// Appliquer la rotation du bot
-		localPosition.applyEuler(botRotation);
-		
-		// Position mondiale = position du bot + position locale transformée
-		projectilePosition.copy(botPosition).add(localPosition);
-		
-		// Ajuster la hauteur Y
-		const headHeight = 1.3 * botScale;
-		projectilePosition.y = botPosition.y + headHeight + yOffset;
+		// Transformer cette position locale en position mondiale
+		projectilePosition.copy(localPosition).applyMatrix4(botMatrix);
 	  } else {
-		// Position pour le canon principal
-		const headHeight = 1.3 * botScale;
-		const barrelTipZ = -0.4 * botScale;
+		// Position exacte comme dans le client pour le canon principal
+		// Dans le client: barrelTip = new THREE.Vector3(0, 0, -0.7)
+		const localPosition = new THREE.Vector3(0, 1.3 * botScale, -0.7 * botScale);
 		
-		// Créer un vecteur pour le bout du canon dans l'espace local
-		const localBarrelTip = new THREE.Vector3(0, 0, barrelTipZ);
-		
-		// Transformer selon la rotation du bot
-		localBarrelTip.applyEuler(botRotation);
-		
-		// Position mondiale
-		projectilePosition.copy(botPosition).add(localBarrelTip);
-		projectilePosition.y = botPosition.y + headHeight;
+		// Transformer cette position locale en position mondiale
+		projectilePosition.copy(localPosition).applyMatrix4(botMatrix);
 	  }
 	  
 	  const bot = this.gameState.players[botId];
@@ -831,6 +818,7 @@ handleBotShoot(botId) {
 		range: bot.stats?.range || 10
 	  });
 	}
+	
   // Vérifier si des bots sont bloqués
   checkForStuckBots() {
     Object.keys(this.botInstances).forEach(botId => {
