@@ -173,6 +173,40 @@
             opacity: 0.5;
           }
         }
+		/* Style pour le conteneur des instructions avec fond transparent */
+        .instructions-container {
+            margin-top: 20px;
+            text-align: left;
+            color: #fff; /* Texte blanc pour une meilleure lisibilité */
+            font-size: 14px;
+            max-width: 450px;
+            background-color: rgba(0, 0, 0, 0.5); /* Fond semi-transparent noir */
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Style pour le titre des instructions */
+        .instructions-title {
+            color: white;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        /* Style pour le nom du jeu */
+        .game-name {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        /* Style pour les listes d'instructions */
+        .instructions-list {
+            list-style-type: none;
+            padding-left: 10px;
+            margin-top: 5px;
+        }
+		
     </style>
 </head>
 <body>
@@ -182,18 +216,22 @@
 			<p style="color: white; margin-bottom: 20px;">Enter a username to join the battle!</p>
 			<input type="text" id="username-input" placeholder="Your name" style="padding: 8px; width: 80%; margin-bottom: 15px; border-radius: 5px; border: none;">
 			<button id="join-button" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer;">Join</button>
-			<div style="margin-top: 20px; text-align: left; color: #ccc; font-size: 14px; max-width: 450px;">
-				<h3 style="color: white; margin-bottom: 10px; text-align: center;">Game Instructions</h3>
-				<p style="margin-bottom: 10px;">In <span style="color: #4CAF50; font-weight: bold;">Robot Warfare</span>, control your robot and compete against other players in a battle for dominance!</p>
-				<div style="margin-top: 10px; margin-bottom: 5px;"><span style="color: white; font-weight: bold;">Objective:</span></div>
-				<ul style="list-style-type: none; padding-left: 10px; margin-top: 5px;">
+			
+            <!-- Instructions avec fond transparent -->
+			<div class="instructions-container">
+				<h3 class="instructions-title">Game Instructions</h3>
+				<p style="margin-bottom: 10px;">In <span class="game-name">Robot Warfare</span>, control your robot and compete against other players in a battle for dominance!</p>
+				
+                <div style="margin-top: 10px; margin-bottom: 5px;"><span style="color: white; font-weight: bold;">Objective:</span></div>
+				<ul class="instructions-list">
 					<li>• Collect processors to upgrade your robot</li>
 					<li>• Find cannons to add firepower to your arsenal</li>
 					<li>• Defeat other players and claim their resources</li>
 					<li>• Become the most powerful robot on the battlefield!</li>
 				</ul>
-				<div style="margin-bottom: 5px;"><span style="color: white; font-weight: bold;">Controls:</span></div>
-				<ul style="list-style-type: none; padding-left: 10px; margin-top: 5px;">
+				
+                <div style="margin-bottom: 5px;"><span style="color: white; font-weight: bold;">Controls:</span></div>
+				<ul class="instructions-list">
 					<li>↑ / ↓ : Move forward/backward</li>
 					<li>← / → : Rotate robot</li>
 					<li>Left Ctrl : Fire weapon</li>
@@ -3747,7 +3785,7 @@
         let cameraController = null;
 
         // Positionnement et configuration de la caméra
-        camera.position.set(0, 1000, 0); // Position la caméra en hauteur et en retrait
+        camera.position.set(0, 500, 0); // Position la caméra en hauteur et en retrait
         camera.lookAt(0,0,0); // Oriente la caméra vers le joueur
 
         // Gestion des touches
