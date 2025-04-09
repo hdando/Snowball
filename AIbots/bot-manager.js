@@ -752,33 +752,50 @@ class BotManager {
 	  // Créer l'ID du projectile
 	  const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 	  
-	  // Créer une matrice de transformation pour simuler la hiérarchie d'objets
-	  const botMatrix = new THREE.Matrix4().makeRotationY(botRotation);
-	  botMatrix.setPosition(botPosition.x, botPosition.y, botPosition.z);
+	  // Bot réel pour récupérer les statistiques
+	  const bot = this.gameState.players[botId];
+	  
+	  // CORRECTION: Création correcte de la matrice de transformation
+	  // Utiliser une approche plus directe qui ne remplace pas la rotation
+	  const position = new THREE.Vector3(botPosition.x, botPosition.y, botPosition.z);
+	  const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, botRotation, 0));
 	  
 	  let projectilePosition = new THREE.Vector3();
 	  
 	  if (isSideCannon) {
-		// Positions exactes comme dans le client pour les canons latéraux
+		// Positions pour les canons latéraux
 		const xOffset = (isLeftSide ? -0.25 : 0.25) * botScale;
 		const yOffset = (0.9 - (rowIndex * 0.45)) * botScale;
 		const zOffset = -0.2 * botScale;
 		
-		// Créer une position locale à l'extrémité du canon latéral
-		const localPosition = new THREE.Vector3(xOffset, yOffset + 1.3 * botScale, zOffset - 0.5 * botScale);
+		// Position locale de l'extrémité du canon avec un décalage pour éviter les collisions
+		const localPosition = new THREE.Vector3(xOffset, 1.3 * botScale + yOffset, zOffset - 0.4 * botScale);
 		
-		// Transformer cette position locale en position mondiale
-		projectilePosition.copy(localPosition).applyMatrix4(botMatrix);
+		// Transformer la position locale avec la rotation
+		localPosition.applyQuaternion(quaternion);
+		
+		// Ajouter la position du bot
+		projectilePosition.copy(position).add(localPosition);
 	  } else {
-		// Position exacte comme dans le client pour le canon principal
-		// Dans le client: barrelTip = new THREE.Vector3(0, 0, -0.7)
-		const localPosition = new THREE.Vector3(0, 1.3 * botScale, -0.7 * botScale);
+		// Pour le canon principal, simuler exactement ce qui se passe côté client
+		// Création d'une position locale au bout du canon, avec un léger décalage supplémentaire
+		const localPosition = new THREE.Vector3(0, 0, -0.8 * botScale);
 		
-		// Transformer cette position locale en position mondiale
-		projectilePosition.copy(localPosition).applyMatrix4(botMatrix);
+		// Transformer avec la rotation
+		localPosition.applyQuaternion(quaternion);
+		
+		// Position mondiale = position du bot + position locale transformée
+		projectilePosition.copy(position).add(localPosition);
+		
+		// Ajuster la hauteur Y pour correspondre au canon (sur la tête du robot)
+		projectilePosition.y = botPosition.y + 1.3 * botScale;
 	  }
 	  
-	  const bot = this.gameState.players[botId];
+	  // AJOUT: Log de débogage pour vérifier la position du projectile
+	  console.log(`Bot projectile position: (${projectilePosition.x.toFixed(2)}, ${projectilePosition.y.toFixed(2)}, ${projectilePosition.z.toFixed(2)})`);
+	  console.log(`Bot position: (${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)})`);
+	  console.log(`Direction: (${botDirection.x.toFixed(2)}, ${botDirection.y.toFixed(2)}, ${botDirection.z.toFixed(2)})`);
+	  
 	  const currentTime = Date.now();
 	  
 	  // Ajouter le projectile à l'état du jeu
@@ -817,8 +834,7 @@ class BotManager {
 		damage: bot.stats?.attack || 10,
 		range: bot.stats?.range || 10
 	  });
-	}
-	
+	}	
   // Vérifier si des bots sont bloqués
   checkForStuckBots() {
     Object.keys(this.botInstances).forEach(botId => {
