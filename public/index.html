@@ -1027,12 +1027,59 @@
 		  
 		  // Si projectile d'un bot, ajouter des logs détaillés
 		  const isBotProjectile = this.owner.playerId && this.owner.playerId.startsWith('bot-');
-		  if (isBotProjectile && collisions.length > 0) {
-			console.group(`🔍 Collision détectée pour projectile de ${this.owner.username || this.owner.playerId}`);
-			console.log(`Position projectile:`, this.group.position);
-			console.log(`Distance parcourue: ${this.distance.toFixed(2)} / ${this.maxDistance.toFixed(2)}`);
-			console.log(`Nombre d'objets en collision: ${collisions.length}`);
-		  }
+			if (isBotProjectile && collisions.length > 0) {
+				console.group(`🔍 Collision détectée pour projectile de ${this.owner.username || this.owner.playerId}`);
+				console.log(`Position projectile:`, this.group.position);
+				console.log(`Distance parcourue: ${this.distance.toFixed(2)} / ${this.maxDistance.toFixed(2)}`);
+				console.log(`Nombre d'objets en collision: ${collisions.length}`);
+				
+				// Lister tous les objets en collision
+				collisions.forEach((obj, index) => {
+					console.group(`Objet en collision #${index + 1}:`);
+					console.log(`Type d'objet:`, obj.constructor ? obj.constructor.name : "Type inconnu");
+					console.log(`Instance de Player:`, obj instanceof Player);
+					console.log(`ID:`, obj.playerId || obj.id || "ID inconnu");
+					console.log(`Nom:`, obj.username || "Nom inconnu");
+					
+					// Informations détaillées sur userData
+					console.log(`userData:`, obj.userData);
+					if (obj.userData) {
+						console.log(`userData.type:`, obj.userData.type);
+					}
+					
+					// Vérifier les propriétés mesh et position
+					if (obj.mesh) {
+						console.log(`A un mesh:`, true);
+						console.log(`Type de mesh:`, obj.mesh.type);
+						console.log(`Position du mesh:`, obj.mesh.position);
+					} else {
+						console.log(`A un mesh:`, false);
+					}
+					
+					// Si c'est un collider spécifique
+					if (obj.collider) {
+						console.log(`A un collider:`, true);
+						console.log(`Type de collider:`, obj.collider.type);
+					} else {
+						console.log(`A un collider:`, false);
+					}
+					
+					// Vérifier si c'est le sol
+					console.log(`Est le sol:`, obj === gameMap.floor);
+					
+					// Vérifier si c'est la bordure de la carte
+					console.log(`Est la bordure:`, obj === gameMap.circleBorderObj);
+					
+					// Vérifier si l'objet est dans la liste des structures
+					const isStructure = gameMap.structures.includes(obj);
+					console.log(`Est une structure:`, isStructure);
+					
+					// Vérifier si c'est un arbre
+					const isTree = gameMap.trees.includes(obj);
+					console.log(`Est un arbre:`, isTree);
+					
+					console.groupEnd();
+				});
 		  
 		  for (const obj of collisions) {
 			// Ignorer le propriétaire du projectile
