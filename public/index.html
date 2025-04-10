@@ -180,7 +180,7 @@
             color: #fff; /* Texte blanc pour une meilleure lisibilité */
             font-size: 14px;
             max-width: 450px;
-            background-color: rgba(0, 0, 0, 0.5); /* Fond semi-transparent noir */
+            background-color: rgba(0, 0, 0, 0.1); /* Fond semi-transparent noir */
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
@@ -1697,54 +1697,60 @@
             }
             
             // Créer des bordures visuelles autour de la carte
-            createBorders(scene) {
+			createBorders(scene) {
 				const borderMaterial = new THREE.MeshStandardMaterial({ 
-									color: 0xd2b48c, // Couleur beige-ocre
-									roughness: 0.9,  // Plus rugueux pour ressembler à la pierre ancienne
-									metalness: 0.1   // Faible métallicité pour la pierre
-								});
-                
-                // Hauteur des murs
-                const wallHeight = 0.4;
-                
-				// Créer une bordure circulaire
-				const radius = this.width / 2; // Rayon du cercle = moitié de la largeur
-				const segments = 64; // Nombre de segments pour créer le cercle
+					color: 0xd2b48c,
+					roughness: 0.9,
+					metalness: 0.1
+				});
+				
+				const radius = this.width / 2;
+				const segments = 64;
+				const wallHeight = 15;
 				const wallThickness = 1;
 				
-				// Créer une géométrie tubulaire pour la bordure circulaire
-				const circleShape = new THREE.Shape();
-				circleShape.absarc(0, 0, radius, 0, Math.PI * 2, false);
+				// Créer un groupe pour contenir tous les segments de mur
+				this.borderGroup = new THREE.Group();
+				scene.add(this.borderGroup);
 				
-				// Créer un trou à l'intérieur pour rendre la bordure creuse
-				const holeShape = new THREE.Shape();
-				holeShape.absarc(0, 0, radius - wallThickness, 0, Math.PI * 2, true);
-				circleShape.holes.push(holeShape);
+				// Créer des segments individuels pour la bordure circulaire
+				for (let i = 0; i < segments; i++) {
+					const angle1 = (i / segments) * Math.PI * 2;
+					const angle2 = ((i + 1) / segments) * Math.PI * 2;
+					
+					const x1 = Math.cos(angle1) * radius;
+					const z1 = Math.sin(angle1) * radius;
+					const x2 = Math.cos(angle2) * radius;
+					const z2 = Math.sin(angle2) * radius;
+					
+					// Créer un segment de mur entre les deux points
+					const segmentLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(z2 - z1, 2));
+					const wallGeometry = new THREE.BoxGeometry(segmentLength, wallHeight, wallThickness);
+					
+					const wallSegment = new THREE.Mesh(wallGeometry, borderMaterial);
+					
+					// Positionner et orienter le segment
+					wallSegment.position.set((x1 + x2) / 2, wallHeight / 2, (z1 + z2) / 2);
+					wallSegment.lookAt(new THREE.Vector3(0, wallSegment.position.y, 0));
+					
+					this.borderGroup.add(wallSegment);
+					
+					// Ajouter au système de collision
+					const wallCollider = {
+						collider: wallSegment,
+						hasCollision: true,
+						userData: { type: 'wall' }
+					};
+					this.collisionSystem.addObject(wallCollider);
+				}
 				
-				// Extrusion de la forme pour créer une bordure 3D
-				const extrudeSettings = {
-					steps: 1,
-					depth: wallHeight,
-					bevelEnabled: false
-				};
-				
-				const borderGeometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
-				this.circleBorder = new THREE.Mesh(borderGeometry, borderMaterial);
-				this.circleBorder.position.y = 0.4;
-				this.circleBorder.rotation.x = Math.PI / 2; // Rotation pour que le cercle soit horizontal
-				this.circleBorder.userData.type = 'wall';
-				scene.add(this.circleBorder);
-				
-				// Ajouter au système de collision
+				// Stocker une référence au groupe de bordures pour les collisions générales
 				this.circleBorderObj = {
-					collider: this.circleBorder,
+					collider: this.borderGroup,
 					hasCollision: true,
 					userData: { type: 'wall' }
 				};
-				this.collisionSystem.addObject(this.circleBorderObj);
-                
-
-            }
+			}
             
 			
 			// Créer des arbres
