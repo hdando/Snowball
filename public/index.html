@@ -1399,6 +1399,7 @@
 				this.collisionSystem.removeObject(this);
 			}
 		}
+		
 		// Classe pour l'arbre destructible avec variables de classe
 		class Tree {
 			constructor(scene, position, collisionSystem) {
@@ -1524,10 +1525,7 @@
 				}
 				
 				if (!this.isAlive) return;
-							
-				// Afficher le texte des dégâts
-				//createDamageText(this.mesh.position, amount); Mis en commentaire pour éviter de voir le message deux fois
-				
+									
 				// Effet visuel de dégâts
 				this.showDamageEffect();
 			}
@@ -3990,7 +3988,7 @@
 					
 					// Add null check for mesh and position
 					if (otherPlayers[data.id].mesh && otherPlayers[data.id].mesh.position) {
-						createDamageText(otherPlayers[data.id].mesh.position, data.damage);
+						//createDamageText(otherPlayers[data.id].mesh.position, data.damage);
 					}
 					
 					// S'assurer que les couleurs originales sont stockées
