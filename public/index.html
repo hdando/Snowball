@@ -1060,7 +1060,7 @@
 				return false;
 			  }
 			  
-			  // IMPORTANT: Utiliser le raycasting au lieu de la vérification de boîte englobante
+			  // Utiliser le raycasting pour la détection précise des collisions
 			  const rayDirection = this.direction.clone().normalize();
 			  const rayOrigin = currentPosition;
 			  const rayDistance = movement.length() * 2; // Vérifier légèrement plus loin que le mouvement
@@ -1157,8 +1157,19 @@
 					targetId = hitObject.playerId;
 					if (isBotProjectile) console.log(`🎯 Joueur touché: ${hitObject.username}, ID: ${targetId}`);
 					
-					// Appliquer directement l'effet visuel localement pour feedback immédiat
-					hitObject.showDamageEffect();
+					// MODIFICATION IMPORTANTE: Appliquer TOUJOURS les dégâts directement
+					// Calculer les dégâts réels en tenant compte de la résistance
+					const resistance = hitObject.resistance || 10;
+					const reductionRatio = 1 - 1/(1 + resistance/100);
+					const actualDamage = Math.max(1, Math.round(this.damage * (1 - reductionRatio)));
+					
+					// Appliquer les dégâts et l'effet visuel
+					hitObject.takeDamage(actualDamage);
+					
+					if (isBotProjectile) {
+					  console.log(`💢 Application directe de ${actualDamage} points de dégâts (${this.damage} - ${Math.round(reductionRatio*100)}% résistance)`);
+					  console.log(`💉 HP restants: ${hitObject.hp}/${hitObject.maxHp}`);
+					}
 				  }
 				  
 				  // Envoyer l'impact au serveur uniquement si c'est le joueur principal
@@ -1174,6 +1185,7 @@
 						z: this.group.position.z
 					  }
 					});
+					if (isBotProjectile) console.log(`📤 Notification d'impact envoyée au serveur`);
 				  }
 				  
 				  if (isBotProjectile) console.groupEnd();
@@ -1210,8 +1222,9 @@
 			  }
 			  
 			  return true; // Le projectile continue son trajet
-			}	
-            // Créer une explosion et détruire le projectile
+			}
+			
+			// Créer une explosion et détruire le projectile
             explode() {
                 // Créer un effet d'explosion
                 this.createExplosionEffect();
@@ -1675,7 +1688,7 @@
 				
 				const radius = this.width / 2;
 				const segments = 64;
-				const wallHeight = 5;
+				const wallHeight = 3;
 				const wallThickness = 1;
 				
 				// Créer un groupe pour contenir tous les segments de mur
