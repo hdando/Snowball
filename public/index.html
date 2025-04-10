@@ -1073,31 +1073,7 @@
 				this  // Exclure le projectile lui-même
 			  );
 			  
-			  // Si projectile d'un bot, ajouter des logs détaillés
-			  const isBotProjectile = this.owner.playerId && this.owner.playerId.startsWith('bot-');
-			  if (isBotProjectile && raycastHits.length > 0) {
-				console.group(`🔍 Collision par raycasting pour projectile de ${this.owner.username || this.owner.playerId}`);
-				console.log(`Position projectile:`, this.group.position);
-				console.log(`Distance parcourue: ${this.distance.toFixed(2)} / ${this.maxDistance.toFixed(2)}`);
-				console.log(`Nombre d'objets touchés: ${raycastHits.length}`);
-				
-				// Journaliser le hit le plus proche
-				const closestHit = raycastHits[0];
-				console.log(`Collision la plus proche à: ${closestHit.distance.toFixed(2)} unités`);
-				console.log(`Point d'impact:`, closestHit.point);
-				
-				// Informations sur l'objet touché
-				const hitObject = closestHit.object;
-				console.log(`Objet touché:`, {
-				  type: hitObject.constructor?.name || 'Type inconnu',
-				  isPlayer: hitObject instanceof Player,
-				  id: hitObject.playerId || hitObject.id || 'ID inconnu',
-				  name: hitObject.username || 'Nom inconnu',
-				  position: hitObject.mesh?.position || 'Position inconnue',
-				  distance: this.group.position.distanceTo(hitObject.mesh?.position)
-				});
-			  }
-			  
+		  
 			  // Traiter les collisions
 			  if (raycastHits.length > 0) {
 				const hitInfo = raycastHits[0]; // Prendre la première collision (la plus proche)
@@ -1105,10 +1081,6 @@
 				
 				// Ignorer le propriétaire du projectile
 				if (hitObject === this.owner) {
-				  if (isBotProjectile) {
-					console.log(`⚠️ Collision avec son propre propriétaire, ignorée`);
-					console.groupEnd();
-				  }
 				  return true; // Continuer le déplacement
 				}
 				
@@ -1139,10 +1111,6 @@
 					}
 					hitObject.takeDamage(this.damage);
 				  }
-				  if (isBotProjectile) {
-					console.log(`💥 Explosion sur structure/terrain au point d'impact`);
-					console.groupEnd();
-				  }
 				  this.explode();
 				  return false;
 				}
@@ -1155,8 +1123,7 @@
 				  // Vérifier si l'objet touché est un joueur
 				  if (hitObject instanceof Player) {
 					targetId = hitObject.playerId;
-					if (isBotProjectile) console.log(`🎯 Joueur touché: ${hitObject.username}, ID: ${targetId}`);
-					
+				
 					// MODIFICATION IMPORTANTE: Appliquer TOUJOURS les dégâts directement
 					// Calculer les dégâts réels en tenant compte de la résistance
 					const resistance = hitObject.resistance || 10;
@@ -1166,10 +1133,6 @@
 					// Appliquer les dégâts et l'effet visuel
 					hitObject.takeDamage(actualDamage);
 					
-					if (isBotProjectile) {
-					  console.log(`💢 Application directe de ${actualDamage} points de dégâts (${this.damage} - ${Math.round(reductionRatio*100)}% résistance)`);
-					  console.log(`💉 HP restants: ${hitObject.hp}/${hitObject.maxHp}`);
-					}
 				  }
 				  
 				  // Envoyer l'impact au serveur uniquement si c'est le joueur principal
@@ -1185,10 +1148,8 @@
 						z: this.group.position.z
 					  }
 					});
-					if (isBotProjectile) console.log(`📤 Notification d'impact envoyée au serveur`);
 				  }
 				  
-				  if (isBotProjectile) console.groupEnd();
 				  this.explode();
 				  return false;
 				} else {
@@ -1207,20 +1168,11 @@
 					});
 				  }
 				  
-				  if (isBotProjectile) {
-					console.log(`💥 Explosion sur objet non classifié`);
-					console.groupEnd();
-				  }
 				  this.explode();
 				  return false;
 				}
 			  }
-			  
-			  if (isBotProjectile && raycastHits.length > 0) {
-				console.log(`✅ Traitement des collisions terminé`);
-				console.groupEnd();
-			  }
-			  
+			  	  
 			  return true; // Le projectile continue son trajet
 			}
 			
@@ -1421,7 +1373,7 @@
 				
 				const colliderMaterial = new THREE.MeshBasicMaterial({
 					transparent: true,
-					opacity: 0.5,            // Légèrement visible pour le débogage (0 pour production)
+					opacity: 0.0,            // Invisible
 					wireframe: true,         // Afficher en wireframe pour le débogage
 					color: 0xff0000          // Rouge pour le débogage
 				});
@@ -2389,7 +2341,6 @@
 			addSideCannon() {
 				// Vérifier si on a atteint le nombre maximum de canons
 				if (this.sideCannons.length >= this.maxSideCannons) {
-					console.log("Nombre maximum de canons atteint");
 					return false;
 				}
 				
@@ -3889,7 +3840,6 @@
 				
 				// Traiter les structures statiques
 				if (state.structures) {
-					console.log(`Structures reçues: ${Object.keys(state.structures).length}`);
 					// IMPORTANT : Vider les structures existantes avant d'en créer de nouvelles
 					gameMap.structures.forEach(structure => {
 					  if (structure.destroy) structure.destroy();
@@ -3897,7 +3847,6 @@
 					gameMap.structures = [];
 					
 					Object.values(state.structures).forEach(structureData => {
-						console.log(`Création de la structure ${structureData.id} de type ${structureData.type}`);
 						createServerStructure(structureData);
 					});
 				} else {
@@ -4187,7 +4136,6 @@
 			});
 			
 			socket.on('createBotCollider', (data) => {
-			  console.log('Création du collider pour le bot:', data.botId);
 			  
 			  // Vérifier si ce bot existe déjà dans les autres joueurs
 			  if (otherPlayers[data.botId]) {
@@ -4197,15 +4145,6 @@
 				// Créer le collider sans vérification
 				otherPlayers[data.botId].createCollider();
 				otherPlayers[data.botId].hasCollision = true;
-
-				// Rendre le collider visible
-				if (otherPlayers[data.botId].colliderMesh) {
-				  otherPlayers[data.botId].colliderMesh.material.opacity = 0.3;
-				  otherPlayers[data.botId].colliderMesh.material.color.set(0x00ff00); // Vert
-				  console.log('Collider rendu visible pour:', data.botId);
-				} else {
-				  console.log('colliderMesh non trouvé pour le bot:', data.botId);
-				}
 
 				// Ajouter au système de collision
 				if (collisionSystem) {
