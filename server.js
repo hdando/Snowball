@@ -182,7 +182,7 @@ function startGameCycle() {
   // Créer un intervalle pour les mises à jour des bots
   const botUpdateInterval = setInterval(() => {
     botManager.updateBots();
-  }, 50); // Mettre à jour les bots 20 fois par seconde
+  }, 15); // Mettre à jour les bots toutes les 15 ms
   
   // Planifier la fin de la partie en utilisant l'endTime calculé
   const timeToEnd = currentGameState.endTime - Date.now();
@@ -926,7 +926,7 @@ io.on('connection', (socket) => {
       
       if (playerPosition) {
         const distance = calculateDistance(playerPosition, structure.position);
-        const MAX_STRUCTURE_ATTACK_RANGE = 20; // Distance maximale pour pouvoir attaquer une structure
+        const MAX_STRUCTURE_ATTACK_RANGE = 50; // Distance maximale pour pouvoir attaquer une structure
         
         if (distance > MAX_STRUCTURE_ATTACK_RANGE) {
           console.log(`Tentative d'attaque de structure trop éloignée: ${distance.toFixed(2)} > ${MAX_STRUCTURE_ATTACK_RANGE}`);
