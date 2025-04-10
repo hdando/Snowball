@@ -957,6 +957,7 @@
                 
                 return collisions;
             }
+			
 			checkRayCollision(origin, direction, maxDistance, excludeObject) {
 				const intersects = [];
 				
@@ -1036,220 +1037,180 @@
                 scene.add(this.light);
             }
             
-            
-		// Dans la classe Projectile du fichier index.html
-		// Modifiez la méthode update() pour ajouter des logs détaillés:
-
-		update() {
-		  // Vecteur de déplacement
-		  const movement = this.direction.clone().multiplyScalar(this.speed);
-		  
-		  // Déplacer le projectile
-		  this.group.position.add(movement);
-		  this.light.position.copy(this.group.position);
-		  
-		  // Faire tourner légèrement l'obus pour un effet réaliste
-		  this.mesh.rotation.z += 0.1;
-		  
-		  // Mettre à jour la distance parcourue (distance réelle)
-		  this.distance += movement.length();
-		  
-		  // Vérifier si le projectile a atteint sa portée maximale
-		  if (this.distance >= this.maxDistance) {
-			this.explode();
-			return false;
-		  }
-		  
-		  // Vérifier les collisions
-		  const collisions = this.collisionSystem.checkCollisionForObject(this);
-		  
-		  // Si projectile d'un bot, ajouter des logs détaillés
-		  const isBotProjectile = this.owner.playerId && this.owner.playerId.startsWith('bot-');
-			if (isBotProjectile && collisions.length > 0) {
-				console.group(`🔍 Collision détectée pour projectile de ${this.owner.username || this.owner.playerId}`);
+			update() {
+			  // Vecteur de déplacement
+			  const movement = this.direction.clone().multiplyScalar(this.speed);
+			  
+			  // Position actuelle avant déplacement (pour le raycasting)
+			  const currentPosition = this.group.position.clone();
+			  
+			  // Déplacer le projectile
+			  this.group.position.add(movement);
+			  this.light.position.copy(this.group.position);
+			  
+			  // Faire tourner légèrement l'obus pour un effet réaliste
+			  this.mesh.rotation.z += 0.1;
+			  
+			  // Mettre à jour la distance parcourue
+			  this.distance += movement.length();
+			  
+			  // Vérifier si le projectile a atteint sa portée maximale
+			  if (this.distance >= this.maxDistance) {
+				this.explode();
+				return false;
+			  }
+			  
+			  // IMPORTANT: Utiliser le raycasting au lieu de la vérification de boîte englobante
+			  const rayDirection = this.direction.clone().normalize();
+			  const rayOrigin = currentPosition;
+			  const rayDistance = movement.length() * 2; // Vérifier légèrement plus loin que le mouvement
+			  
+			  // Vérifier les collisions avec un rayon
+			  const raycastHits = this.collisionSystem.checkRayCollision(
+				rayOrigin,
+				rayDirection,
+				rayDistance,
+				this  // Exclure le projectile lui-même
+			  );
+			  
+			  // Si projectile d'un bot, ajouter des logs détaillés
+			  const isBotProjectile = this.owner.playerId && this.owner.playerId.startsWith('bot-');
+			  if (isBotProjectile && raycastHits.length > 0) {
+				console.group(`🔍 Collision par raycasting pour projectile de ${this.owner.username || this.owner.playerId}`);
 				console.log(`Position projectile:`, this.group.position);
 				console.log(`Distance parcourue: ${this.distance.toFixed(2)} / ${this.maxDistance.toFixed(2)}`);
-				console.log(`Nombre d'objets en collision: ${collisions.length}`);
+				console.log(`Nombre d'objets touchés: ${raycastHits.length}`);
 				
-				// Lister tous les objets en collision
-				collisions.forEach((obj, index) => {
-					console.group(`Objet en collision #${index + 1}:`);
-					console.log(`Type d'objet:`, obj.constructor ? obj.constructor.name : "Type inconnu");
-					console.log(`Instance de Player:`, obj instanceof Player);
-					console.log(`ID:`, obj.playerId || obj.id || "ID inconnu");
-					console.log(`Nom:`, obj.username || "Nom inconnu");
-					
-					// Informations détaillées sur userData
-					console.log(`userData:`, obj.userData);
-					if (obj.userData) {
-						console.log(`userData.type:`, obj.userData.type);
-					}
-					
-					// Vérifier les propriétés mesh et position
-					if (obj.mesh) {
-						console.log(`A un mesh:`, true);
-						console.log(`Type de mesh:`, obj.mesh.type);
-						console.log(`Position du mesh:`, obj.mesh.position);
-					} else {
-						console.log(`A un mesh:`, false);
-					}
-					
-					// Si c'est un collider spécifique
-					if (obj.collider) {
-						console.log(`A un collider:`, true);
-						console.log(`Type de collider:`, obj.collider.type);
-					} else {
-						console.log(`A un collider:`, false);
-					}
-					
-					// Vérifier si c'est le sol
-					console.log(`Est le sol:`, obj === gameMap.floor);
-					
-					// Vérifier si c'est la bordure de la carte
-					console.log(`Est la bordure:`, obj === gameMap.circleBorderObj);
-					
-					// Vérifier si l'objet est dans la liste des structures
-					const isStructure = gameMap.structures.includes(obj);
-					console.log(`Est une structure:`, isStructure);
-					
-					// Vérifier si c'est un arbre
-					const isTree = gameMap.trees.includes(obj);
-					console.log(`Est un arbre:`, isTree);
-					
-					console.groupEnd();
+				// Journaliser le hit le plus proche
+				const closestHit = raycastHits[0];
+				console.log(`Collision la plus proche à: ${closestHit.distance.toFixed(2)} unités`);
+				console.log(`Point d'impact:`, closestHit.point);
+				
+				// Informations sur l'objet touché
+				const hitObject = closestHit.object;
+				console.log(`Objet touché:`, {
+				  type: hitObject.constructor?.name || 'Type inconnu',
+				  isPlayer: hitObject instanceof Player,
+				  id: hitObject.playerId || hitObject.id || 'ID inconnu',
+				  name: hitObject.username || 'Nom inconnu',
+				  position: hitObject.mesh?.position || 'Position inconnue',
+				  distance: this.group.position.distanceTo(hitObject.mesh?.position)
 				});
-			}
-		  for (const obj of collisions) {
-			// Ignorer le propriétaire du projectile
-			if (obj === this.owner) {
-			  if (isBotProjectile) {
-				console.log(`⚠️ Collision avec son propre propriétaire (${this.owner.username || this.owner.playerId}), ignorée`);
-			  }
-			  continue;
-			}
-			
-			// Log détaillé pour les projectiles de bots
-			if (isBotProjectile) {
-			  console.log(`Collision avec:`, {
-				type: obj.constructor?.name || 'Type inconnu',
-				isPlayer: obj instanceof Player,
-				id: obj.playerId || obj.id || 'ID inconnu',
-				name: obj.username || 'Nom inconnu',
-				position: obj.mesh?.position || obj.position || 'Position inconnue',
-				userDataType: obj.userData?.type || 'Pas de userData.type'
-			  });
-			  
-			  // Distance entre le projectile et l'objet
-			  if (obj.mesh && obj.mesh.position) {
-				const distance = this.group.position.distanceTo(obj.mesh.position);
-				console.log(`Distance entre projectile et objet: ${distance.toFixed(2)} unités`);
 			  }
 			  
-			  // Vérification de la hiérarchie d'objets
-			  if (obj.mesh && obj.mesh.parent) {
-				console.log(`Hiérarchie de l'objet: parent=${obj.mesh.parent.type || 'type inconnu'}`);
-			  }
-			}
-			
-			// Vérifier si c'est un objet avec lequel on peut collisionner
-			if (obj.userData && (obj.userData.type === 'wall' || obj.userData.type === 'floor' || 
-								 obj.userData.type === 'structure' || obj.userData.type === 'tree')) {
-				// Si l'objet est destructible (possède takeDamage), infliger des dégâts
-				if (obj.takeDamage) {
+			  // Traiter les collisions
+			  if (raycastHits.length > 0) {
+				const hitInfo = raycastHits[0]; // Prendre la première collision (la plus proche)
+				const hitObject = hitInfo.object;
+				
+				// Ignorer le propriétaire du projectile
+				if (hitObject === this.owner) {
+				  if (isBotProjectile) {
+					console.log(`⚠️ Collision avec son propre propriétaire, ignorée`);
+					console.groupEnd();
+				  }
+				  return true; // Continuer le déplacement
+				}
+				
+				// Placer le projectile au point d'impact exact plutôt qu'à sa position calculée
+				if (hitInfo.point) {
+				  this.group.position.copy(hitInfo.point);
+				  this.light.position.copy(hitInfo.point);
+				}
+				
+				// Vérifier si c'est un objet environnemental (sol, mur, structure)
+				if (hitObject.userData && (hitObject.userData.type === 'wall' || 
+										   hitObject.userData.type === 'floor' || 
+										   hitObject.userData.type === 'structure' || 
+										   hitObject.userData.type === 'tree')) {
+				  // Si l'objet est destructible (possède takeDamage), infliger des dégâts
+				  if (hitObject.takeDamage) {
 					// IMPORTANT: Envoyer au serveur si c'est le joueur principal
 					if (player && player.isMainPlayer) {
-						socket.emit('structureDamaged', {
-							structureId: obj.id || '',
-							damage: this.damage,
-							position: {
-								x: obj.mesh.position.x,
-								y: obj.mesh.position.y,
-								z: obj.mesh.position.z
-							}
-						});
-					}
-					obj.takeDamage(this.damage);
-				}
-				if (isBotProjectile) console.log(`💥 Explosion sur structure/terrain`);
-				if (isBotProjectile) console.groupEnd();
-				this.explode();
-				return false;
-			}
-			
-			// Si c'est un autre joueur, infliger des dégâts et créer une explosion
-			else if (obj.takeDamage && obj !== this.owner) {
-				// Déterminer l'ID du joueur touché (différent selon si c'est un joueur ou un autre objet)
-				let targetId = '';
-				
-				// Vérifier si l'objet touché est un joueur
-				if (obj instanceof Player) {
-					targetId = obj.playerId;
-					if (isBotProjectile) console.log(`🎯 Joueur touché: ${obj.username}, ID: ${targetId}`);
-					
-					// Appliquer directement l'effet visuel localement pour feedback immédiat
-					obj.showDamageEffect();
-				}
-				
-				// IMPORTANT: Envoyer l'impact au serveur uniquement si c'est le joueur principal
-				if (player && player.isMainPlayer) {
-					// CORRECTION: Éviter d'utiliser l'ID temporaire qui cause la désynchronisation
-					socket.emit('projectileHit', {
-						// Informations sur le projectile pour identification côté serveur
-						ownerId: player.playerId,  // Ajouter l'ID du tireur
-						originPosition: {          // Position de départ du projectile
-							x: this.owner.mesh.position.x,
-							y: this.owner.mesh.position.y,
-							z: this.owner.mesh.position.z
-						},
-						// Informations sur l'impact
-						targetId: targetId,
-						targetType: 'player',
-						damage: this.damage,
-						position: {                // Position actuelle lors de l'impact
-							x: this.group.position.x,
-							y: this.group.position.y,
-							z: this.group.position.z
-						}
-					});
-					if (isBotProjectile) console.log(`📤 Impact envoyé au serveur: joueur ${targetId}, dégâts ${this.damage}`);
-				}
-				
-				if (isBotProjectile) console.groupEnd();
-				this.explode();
-				return false;
-			} else {
-				// Pour les autres objets qui ont takeDamage mais ne sont pas des joueurs
-				if (player && player.isMainPlayer) {
-					socket.emit('projectileHit', {
-						ownerId: player.playerId,
-						targetId: obj.id || '',
-						targetType: 'structure',
+					  socket.emit('structureDamaged', {
+						structureId: hitObject.id || '',
 						damage: this.damage,
 						position: {
-							x: this.group.position.x,
-							y: this.group.position.y,
-							z: this.group.position.z
+						  x: hitObject.mesh.position.x,
+						  y: hitObject.mesh.position.y,
+						  z: hitObject.mesh.position.z
 						}
-					});
-					if (isBotProjectile) console.log(`📤 Impact envoyé au serveur: structure ${obj.id || 'inconnu'}`);
+					  });
+					}
+					hitObject.takeDamage(this.damage);
+				  }
+				  if (isBotProjectile) {
+					console.log(`💥 Explosion sur structure/terrain au point d'impact`);
+					console.groupEnd();
+				  }
+				  this.explode();
+				  return false;
 				}
 				
-				if (isBotProjectile) {
+				// Si c'est un autre joueur, infliger des dégâts
+				else if (hitObject.takeDamage && hitObject !== this.owner) {
+				  // Déterminer l'ID du joueur touché
+				  let targetId = '';
+				  
+				  // Vérifier si l'objet touché est un joueur
+				  if (hitObject instanceof Player) {
+					targetId = hitObject.playerId;
+					if (isBotProjectile) console.log(`🎯 Joueur touché: ${hitObject.username}, ID: ${targetId}`);
+					
+					// Appliquer directement l'effet visuel localement pour feedback immédiat
+					hitObject.showDamageEffect();
+				  }
+				  
+				  // Envoyer l'impact au serveur uniquement si c'est le joueur principal
+				  if (player && player.isMainPlayer) {
+					socket.emit('projectileHit', {
+					  ownerId: player.playerId,
+					  targetId: targetId,
+					  targetType: 'player',
+					  damage: this.damage,
+					  position: {
+						x: this.group.position.x,
+						y: this.group.position.y,
+						z: this.group.position.z
+					  }
+					});
+				  }
+				  
+				  if (isBotProjectile) console.groupEnd();
+				  this.explode();
+				  return false;
+				} else {
+				  // Pour les autres objets qui ont takeDamage mais ne sont pas des joueurs
+				  if (player && player.isMainPlayer) {
+					socket.emit('projectileHit', {
+					  ownerId: player.playerId,
+					  targetId: hitObject.id || '',
+					  targetType: 'structure',
+					  damage: this.damage,
+					  position: {
+						x: this.group.position.x,
+						y: this.group.position.y,
+						z: this.group.position.z
+					  }
+					});
+				  }
+				  
+				  if (isBotProjectile) {
 					console.log(`💥 Explosion sur objet non classifié`);
 					console.groupEnd();
+				  }
+				  this.explode();
+				  return false;
 				}
-				this.explode();
-				return false;
-			}
-		  }
-		  
-		  if (isBotProjectile && collisions.length > 0) {
-			console.log(`✅ Aucune collision valide, projectile continue`);
-			console.groupEnd();
-		  }
-		  
-		  return true;
-		}		
+			  }
+			  
+			  if (isBotProjectile && raycastHits.length > 0) {
+				console.log(`✅ Traitement des collisions terminé`);
+				console.groupEnd();
+			  }
+			  
+			  return true; // Le projectile continue son trajet
+			}	
             // Créer une explosion et détruire le projectile
             explode() {
                 // Créer un effet d'explosion
