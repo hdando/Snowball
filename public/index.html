@@ -13,7 +13,7 @@
             left: 10px;
             color: white;
             font-family: Arial, sans-serif;
-            background-color: rgba(0, 0, 0, 0.7);
+            background-color: rgba(0, 0, 0, 0.3);
             padding: 10px;
             border-radius: 5px;
             width: 250px;
@@ -173,15 +173,73 @@
             opacity: 0.5;
           }
         }
+		/* Style pour le conteneur des instructions avec fond transparent */
+        .instructions-container {
+            margin-top: 20px;
+            text-align: left;
+            color: #fff; /* Texte blanc pour une meilleure lisibilité */
+            font-size: 14px;
+            max-width: 450px;
+            background-color: rgba(0, 0, 0, 0.01); /* Fond semi-transparent noir */
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.01);
+        }
+        
+        /* Style pour le titre des instructions */
+        .instructions-title {
+            color: white;
+            margin-bottom: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        /* Style pour le nom du jeu */
+        .game-name {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        /* Style pour les listes d'instructions */
+        .instructions-list {
+            list-style-type: none;
+            padding-left: 10px;
+            margin-top: 5px;
+        }
+		
     </style>
 </head>
 <body>
 	<div id="login-screen" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-		<div style="background-color: #333; padding: 20px; border-radius: 10px; text-align: center; max-width: 400px;">
+		<div style="background-color: #333; padding: 20px; border-radius: 10px; text-align: center; max-width: 500px;">
 			<h2 style="color: white; margin-bottom: 20px;">Robot Warfare</h2>
 			<p style="color: white; margin-bottom: 20px;">Enter a username to join the battle!</p>
 			<input type="text" id="username-input" placeholder="Your name" style="padding: 8px; width: 80%; margin-bottom: 15px; border-radius: 5px; border: none;">
 			<button id="join-button" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer;">Join</button>
+			
+            <!-- Instructions avec fond transparent -->
+			<div class="instructions-container">
+				<h3 class="instructions-title">Game Instructions</h3>
+				<p style="margin-bottom: 10px;">In <span class="game-name">Robot Warfare</span>, control your robot and compete against other players in a battle for dominance!</p>
+				
+                <div style="margin-top: 10px; margin-bottom: 5px;"><span style="color: white; font-weight: bold;">Objective:</span></div>
+				<ul class="instructions-list">
+					<li>• Collect processors to upgrade your robot</li>
+					<li>• Find cannons to add firepower to your arsenal</li>
+					<li>• Defeat other players and claim their resources</li>
+					<li>• Become the most powerful robot on the battlefield!</li>
+				</ul>
+				
+                <div style="margin-bottom: 5px;"><span style="color: white; font-weight: bold;">Controls:</span></div>
+				<ul class="instructions-list">
+					<li>↑ / ↓ : Move forward/backward</li>
+					<li>← / → : Rotate robot</li>
+					<li>Left Ctrl : Fire weapon</li>
+					<li>C : Change camera view</li>
+					<li>Right mouse button : Rotate camera</li>
+					<li>Mouse wheel : Zoom in/out</li>
+				</ul>
+			</div>
 		</div>
 	</div>
     <div id="info">
@@ -282,7 +340,7 @@
 		let animationId = null;
 		
 		// Établir la connexion WebSocket
-		const socket = io('https://airobotwarfare.onrender.com',{
+		const socket = io('https://snowball-test.onrender.com/',{
 			reconnectionAttempts: 5,       // Augmenter le nombre de tentatives de reconnexion
 			reconnectionDelay: 1000,       // Commencer avec un délai court (1 seconde)
 			reconnectionDelayMax: 5000,    // Maximum 5 secondes entre les tentatives
@@ -328,14 +386,14 @@
 				// Paramètres de la caméra
 				this.distance = 30;      // Distance entre la caméra et le joueur
 				this.minDistance = 5;    // Distance minimale (pour zoom)
-				this.maxDistance = 100;  // Distance maximale (pour zoom)
+				this.maxDistance = 50;  // Distance maximale (pour zoom)
 				this.height = 10;        // Hauteur relative de la caméra
 				
 				// Angles de rotation (en radians)
 				this.rotationHorizontal = Math.PI;  // Rotation horizontale autour du joueur (commence derrière)
 				this.rotationVertical = Math.PI / 6;  // Rotation verticale (inclinaison)
-				this.minVerticalRotation = 0.1;  // Limite pour ne pas passer sous le sol
-				this.maxVerticalRotation = Math.PI / 2 - 0.1;  // Limite pour ne pas passer au-dessus
+				this.minVerticalRotation = 0.01;  // Limite pour ne pas passer sous le sol
+				this.maxVerticalRotation = Math.PI / 2 - 0.01;  // Limite pour ne pas passer au-dessus
 				
 				// État de la souris
 				this.isMouseDown = false;
@@ -617,7 +675,7 @@
                     attack: { color: 0xff0000, boost: 1 },         // Rouge
                     attackSpeed: { color: 0xffff00, boost: 0.02 }, // Jaune
                     range: { color: 0x0000ff, boost: 1 },          // Bleu
-                    speed: { color: 0x4b0082, boost: 0.003 },      // Indigo
+                    speed: { color: 0x4b0082, boost: 0.002 },      // Indigo
                     repairSpeed: { color: 0x8a2be2, boost: 0.05 }  // Violet
                 };
                 
@@ -899,6 +957,7 @@
                 
                 return collisions;
             }
+			
 			checkRayCollision(origin, direction, maxDistance, excludeObject) {
 				const intersects = [];
 				
@@ -937,7 +996,7 @@
                 
                 // Propriétés de mouvement
                 this.direction = direction.normalize();
-                this.speed = 1;
+                this.speed = 2; // vitesse du projectile
                 this.distance = 0;
                 this.maxDistance = owner.range;
                 
@@ -946,8 +1005,8 @@
                 this.owner = owner;
                 
                 // Créer un obus en forme de capsule (plus réaliste qu'une sphère)
-                const capsuleLength = 0.05;
-                const capsuleRadius = 0.03;
+                const capsuleLength = 0.02;
+                const capsuleRadius = 0.02;
                 const capsuleGeometry = new THREE.CapsuleGeometry(capsuleRadius, capsuleLength, 8, 8);
                 const capsuleMaterial = new THREE.MeshStandardMaterial({ 
                     color: 0xffcc00,  // Couleur dorée pour un obus
@@ -978,121 +1037,146 @@
                 scene.add(this.light);
             }
             
-            
-			// Mettre à jour le projectile
 			update() {
-				// Vecteur de déplacement
-				const movement = this.direction.clone().multiplyScalar(this.speed);
+			  // Vecteur de déplacement
+			  const movement = this.direction.clone().multiplyScalar(this.speed);
+			  
+			  // Position actuelle avant déplacement (pour le raycasting)
+			  const currentPosition = this.group.position.clone();
+			  
+			  // Déplacer le projectile
+			  this.group.position.add(movement);
+			  this.light.position.copy(this.group.position);
+			  
+			  // Faire tourner légèrement l'obus pour un effet réaliste
+			  this.mesh.rotation.z += 0.1;
+			  
+			  // Mettre à jour la distance parcourue
+			  this.distance += movement.length();
+			  
+			  // Vérifier si le projectile a atteint sa portée maximale
+			  if (this.distance >= this.maxDistance) {
+				this.explode();
+				return false;
+			  }
+			  
+			  // Utiliser le raycasting pour la détection précise des collisions
+			  const rayDirection = this.direction.clone().normalize();
+			  const rayOrigin = currentPosition;
+			  const rayDistance = movement.length() * 2; // Vérifier légèrement plus loin que le mouvement
+			  
+			  // Vérifier les collisions avec un rayon
+			  const raycastHits = this.collisionSystem.checkRayCollision(
+				rayOrigin,
+				rayDirection,
+				rayDistance,
+				this  // Exclure le projectile lui-même
+			  );
+			  
+		  
+			  // Traiter les collisions
+			  if (raycastHits.length > 0) {
+				const hitInfo = raycastHits[0]; // Prendre la première collision (la plus proche)
+				const hitObject = hitInfo.object;
 				
-				// Déplacer le projectile
-				this.group.position.add(movement);
-				this.light.position.copy(this.group.position);
-				
-				// Faire tourner légèrement l'obus pour un effet réaliste
-				this.mesh.rotation.z += 0.1;
-				
-				// Mettre à jour la distance parcourue (distance réelle)
-				this.distance += movement.length();
-				
-				// Vérifier si le projectile a atteint sa portée maximale
-				if (this.distance >= this.maxDistance) {
-					this.explode();
-					return false;
+				// Ignorer le propriétaire du projectile
+				if (hitObject === this.owner) {
+				  return true; // Continuer le déplacement
 				}
 				
-				// Vérifier les collisions
-				const collisions = this.collisionSystem.checkCollisionForObject(this);
-				
-				for (const obj of collisions) {
-					// Ignorer le propriétaire du projectile
-					if (obj === this.owner) continue;
-					
-					// Vérifier si c'est un objet avec lequel on peut collisionner
-					if (obj.userData && (obj.userData.type === 'wall' || obj.userData.type === 'floor' || 
-										 obj.userData.type === 'structure' || obj.userData.type === 'tree')) {
-						// Si l'objet est destructible (possède takeDamage), infliger des dégâts
-						if (obj.takeDamage) {
-							// IMPORTANT: Envoyer au serveur si c'est le joueur principal
-							if (player && player.isMainPlayer) {
-								socket.emit('structureDamaged', {
-									structureId: obj.id || '',
-									damage: this.damage,
-									position: {
-										x: obj.mesh.position.x,
-										y: obj.mesh.position.y,
-										z: obj.mesh.position.z
-									}
-								});
-							}
-							obj.takeDamage(this.damage);
-						}
-						this.explode();
-						return false;
-					}
-					
-					// Si c'est un autre joueur, infliger des dégâts et créer une explosion
-					else if (obj.takeDamage && obj !== this.owner) {
-						// Déterminer l'ID du joueur touché (différent selon si c'est un joueur ou un autre objet)
-						let targetId = '';
-						
-						// Vérifier si l'objet touché est un joueur
-						if (obj instanceof Player) {
-							targetId = obj.playerId;
-							console.log("Joueur touché:", obj.username, "ID:", targetId);
-							
-							// Appliquer directement l'effet visuel localement pour feedback immédiat
-							obj.showDamageEffect();
-
-						}
-						
-						// IMPORTANT: Envoyer l'impact au serveur uniquement si c'est le joueur principal
-						if (player && player.isMainPlayer) {
-							// CORRECTION: Éviter d'utiliser l'ID temporaire qui cause la désynchronisation
-							socket.emit('projectileHit', {
-								// Informations sur le projectile pour identification côté serveur
-								ownerId: player.playerId,  // Ajouter l'ID du tireur
-								originPosition: {          // Position de départ du projectile
-									x: this.owner.mesh.position.x,
-									y: this.owner.mesh.position.y,
-									z: this.owner.mesh.position.z
-								},
-								// Informations sur l'impact
-								targetId: targetId,
-								targetType: 'player',
-								damage: this.damage,
-								position: {                // Position actuelle lors de l'impact
-									x: this.group.position.x,
-									y: this.group.position.y,
-									z: this.group.position.z
-								}
-							});
-							console.log("Impact envoyé au serveur:", targetId, this.damage);
-						}
-					} else {
-						// Pour les autres objets qui ont takeDamage mais ne sont pas des joueurs
-						if (player && player.isMainPlayer) {
-							socket.emit('projectileHit', {
-								ownerId: player.playerId,
-								targetId: obj.id || '',
-								targetType: 'structure',
-								damage: this.damage,
-								position: {
-									x: this.group.position.x,
-									y: this.group.position.y,
-									z: this.group.position.z
-								}
-							});
-						}
-					}
-					
-					this.explode();
-					return false;
+				// Placer le projectile au point d'impact exact plutôt qu'à sa position calculée
+				if (hitInfo.point) {
+				  this.group.position.copy(hitInfo.point);
+				  this.light.position.copy(hitInfo.point);
 				}
 				
-				return true
+				// Vérifier si c'est un objet environnemental (sol, mur, structure)
+				if (hitObject.userData && (hitObject.userData.type === 'wall' || 
+										   hitObject.userData.type === 'floor' || 
+										   hitObject.userData.type === 'structure' || 
+										   hitObject.userData.type === 'tree')) {
+				  // Si l'objet est destructible (possède takeDamage), infliger des dégâts
+				  if (hitObject.takeDamage) {
+					// IMPORTANT: Envoyer au serveur si c'est le joueur principal
+					if (player && player.isMainPlayer) {
+					  socket.emit('structureDamaged', {
+						structureId: hitObject.id || '',
+						damage: this.damage,
+						position: {
+						  x: hitObject.mesh.position.x,
+						  y: hitObject.mesh.position.y,
+						  z: hitObject.mesh.position.z
+						}
+					  });
+					}
+					hitObject.takeDamage(this.damage);
+				  }
+				  this.explode();
+				  return false;
+				}
+				
+				// Si c'est un autre joueur, infliger des dégâts
+				else if (hitObject.takeDamage && hitObject !== this.owner) {
+				  // Déterminer l'ID du joueur touché
+				  let targetId = '';
+				  
+				  // Vérifier si l'objet touché est un joueur
+				  if (hitObject instanceof Player) {
+					targetId = hitObject.playerId;
+				
+					// MODIFICATION IMPORTANTE: Appliquer TOUJOURS les dégâts directement
+					// Calculer les dégâts réels en tenant compte de la résistance
+					const resistance = hitObject.resistance || 10;
+					const reductionRatio = 1 - 1/(1 + resistance/100);
+					const actualDamage = Math.max(1, Math.round(this.damage * (1 - reductionRatio)));
+					
+					// Appliquer les dégâts et l'effet visuel
+					hitObject.takeDamage(actualDamage);
+					
+				  }
+				  
+				  // Envoyer l'impact au serveur uniquement si c'est le joueur principal
+				  if (player && player.isMainPlayer) {
+					socket.emit('projectileHit', {
+					  ownerId: player.playerId,
+					  targetId: targetId,
+					  targetType: 'player',
+					  damage: this.damage,
+					  position: {
+						x: this.group.position.x,
+						y: this.group.position.y,
+						z: this.group.position.z
+					  }
+					});
+				  }
+				  
+				  this.explode();
+				  return false;
+				} else {
+				  // Pour les autres objets qui ont takeDamage mais ne sont pas des joueurs
+				  if (player && player.isMainPlayer) {
+					socket.emit('projectileHit', {
+					  ownerId: player.playerId,
+					  targetId: hitObject.id || '',
+					  targetType: 'structure',
+					  damage: this.damage,
+					  position: {
+						x: this.group.position.x,
+						y: this.group.position.y,
+						z: this.group.position.z
+					  }
+					});
+				  }
+				  
+				  this.explode();
+				  return false;
+				}
+			  }
+			  	  
+			  return true; // Le projectile continue son trajet
 			}
-		
-            // Créer une explosion et détruire le projectile
+			
+			// Créer une explosion et détruire le projectile
             explode() {
                 // Créer un effet d'explosion
                 this.createExplosionEffect();
@@ -1212,15 +1296,21 @@
 			
 			// Calculer les dimensions du collider en fonction de la structure
 			calculateColliderDimensions() {
-				// Rayon du collider exactement celui de la base
+				// Calculer la hauteur totale de la structure
+				// Base + tour + réservoir
+				const totalHeight = this.baseHeight + this.towerHeight + this.tankHeight;
+				
+				// Stocker pour utilisation dans setupCollisions
+				this.colliderHeight = totalHeight;
+				
+				// Le rayon inférieur correspond à la base du château d'eau
 				this.colliderRadiusBottom = this.baseRadius;
-				this.colliderRadiusTop = this.tankRadius; // Le cône est plus large au sommet
 				
-				// Hauteur totale (base + tour + cône)
-				this.colliderHeight = this.tankY + (this.tankHeight / 2);
+				// Le rayon supérieur correspond au réservoir d'eau (plus large)
+				this.colliderRadiusTop = this.tankRadius;
 				
-				// Position Y du collider
-				this.colliderY = this.colliderHeight / 2;
+				// Position Y du collider (doit être centré sur toute la structure)
+				this.colliderY = totalHeight / 2;
 			}
 			
 			// Créer la tour en béton
@@ -1272,17 +1362,20 @@
 			
 			// Configurer les collisions
 			setupCollisions() {
-				// Créer un collider adapté aux dimensions de la structure
+				// Créer un collider en forme de cône tronqué (pour mieux correspondre à la forme)
+				// Le haut est plus large (tankRadius) que le bas (baseRadius)
 				const colliderGeometry = new THREE.CylinderGeometry(
-					this.colliderRadiusBottom,//rayon du sommet
-					this.colliderRadiusBottom, //rayon de la base du cylindre
-					this.colliderHeight, //hauteur du cylindre
-					8	//Nombre de segments sur la circonférence
+					this.colliderRadiusTop,   // Rayon du sommet (réservoir)
+					this.colliderRadiusBottom, // Rayon de la base
+					this.colliderHeight,       // Hauteur totale
+					8                          // Nombre de segments
 				);
+				
 				const colliderMaterial = new THREE.MeshBasicMaterial({
 					transparent: true,
-					opacity: 0.0, // Invisible
-					wireframe: true
+					opacity: 0.0,            // Invisible
+					wireframe: true,         // Afficher en wireframe pour le débogage
+					color: 0xff0000          // Rouge pour le débogage
 				});
 				
 				this.colliderMesh = new THREE.Mesh(colliderGeometry, colliderMaterial);
@@ -1306,7 +1399,7 @@
 				this.collisionSystem.removeObject(this);
 			}
 		}
-
+		
 		// Classe pour l'arbre destructible avec variables de classe
 		class Tree {
 			constructor(scene, position, collisionSystem) {
@@ -1432,10 +1525,7 @@
 				}
 				
 				if (!this.isAlive) return;
-							
-				// Afficher le texte des dégâts
-				//createDamageText(this.mesh.position, amount); Mis en commentaire pour éviter de voir le message deux fois
-				
+									
 				// Effet visuel de dégâts
 				this.showDamageEffect();
 			}
@@ -1498,7 +1588,7 @@
                 // Ajouter le sol au système de collision
                 this.floor.userData.type = 'floor';
                 this.collider = this.floor;  // Le collider est le mesh lui-même
-                this.hasCollision = true;    // Activer les collisions
+                this.hasCollision = false;    // Activer les collisions
                 this.userData = { type: 'floor' };
                 this.collisionSystem.addObject(this);
                 
@@ -1539,54 +1629,60 @@
             }
             
             // Créer des bordures visuelles autour de la carte
-            createBorders(scene) {
+			createBorders(scene) {
 				const borderMaterial = new THREE.MeshStandardMaterial({ 
-									color: 0xd2b48c, // Couleur beige-ocre
-									roughness: 0.9,  // Plus rugueux pour ressembler à la pierre ancienne
-									metalness: 0.1   // Faible métallicité pour la pierre
-								});
-                
-                // Hauteur des murs
-                const wallHeight = 0.4;
-                
-				// Créer une bordure circulaire
-				const radius = this.width / 2; // Rayon du cercle = moitié de la largeur
-				const segments = 64; // Nombre de segments pour créer le cercle
+					color: 0xd2b48c,
+					roughness: 0.9,
+					metalness: 0.1
+				});
+				
+				const radius = this.width / 2;
+				const segments = 64;
+				const wallHeight = 3;
 				const wallThickness = 1;
 				
-				// Créer une géométrie tubulaire pour la bordure circulaire
-				const circleShape = new THREE.Shape();
-				circleShape.absarc(0, 0, radius, 0, Math.PI * 2, false);
+				// Créer un groupe pour contenir tous les segments de mur
+				this.borderGroup = new THREE.Group();
+				scene.add(this.borderGroup);
 				
-				// Créer un trou à l'intérieur pour rendre la bordure creuse
-				const holeShape = new THREE.Shape();
-				holeShape.absarc(0, 0, radius - wallThickness, 0, Math.PI * 2, true);
-				circleShape.holes.push(holeShape);
+				// Créer des segments individuels pour la bordure circulaire
+				for (let i = 0; i < segments; i++) {
+					const angle1 = (i / segments) * Math.PI * 2;
+					const angle2 = ((i + 1) / segments) * Math.PI * 2;
+					
+					const x1 = Math.cos(angle1) * radius;
+					const z1 = Math.sin(angle1) * radius;
+					const x2 = Math.cos(angle2) * radius;
+					const z2 = Math.sin(angle2) * radius;
+					
+					// Créer un segment de mur entre les deux points
+					const segmentLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(z2 - z1, 2));
+					const wallGeometry = new THREE.BoxGeometry(segmentLength, wallHeight, wallThickness);
+					
+					const wallSegment = new THREE.Mesh(wallGeometry, borderMaterial);
+					
+					// Positionner et orienter le segment
+					wallSegment.position.set((x1 + x2) / 2, wallHeight / 2, (z1 + z2) / 2);
+					wallSegment.lookAt(new THREE.Vector3(0, wallSegment.position.y, 0));
+					
+					this.borderGroup.add(wallSegment);
+					
+					// Ajouter au système de collision
+					const wallCollider = {
+						collider: wallSegment,
+						hasCollision: true,
+						userData: { type: 'wall' }
+					};
+					this.collisionSystem.addObject(wallCollider);
+				}
 				
-				// Extrusion de la forme pour créer une bordure 3D
-				const extrudeSettings = {
-					steps: 1,
-					depth: wallHeight,
-					bevelEnabled: false
-				};
-				
-				const borderGeometry = new THREE.ExtrudeGeometry(circleShape, extrudeSettings);
-				this.circleBorder = new THREE.Mesh(borderGeometry, borderMaterial);
-				this.circleBorder.position.y = 0.4;
-				this.circleBorder.rotation.x = Math.PI / 2; // Rotation pour que le cercle soit horizontal
-				this.circleBorder.userData.type = 'wall';
-				scene.add(this.circleBorder);
-				
-				// Ajouter au système de collision
+				// Stocker une référence au groupe de bordures pour les collisions générales
 				this.circleBorderObj = {
-					collider: this.circleBorder,
+					collider: this.borderGroup,
 					hasCollision: true,
 					userData: { type: 'wall' }
 				};
-				this.collisionSystem.addObject(this.circleBorderObj);
-                
-
-            }
+			}
             
 			
 			// Créer des arbres
@@ -1737,7 +1833,7 @@
 				scene.add(this.mesh);
 				
 				// Propriétés de mouvement
-				this.speed = 0.03;  
+				this.speed = 0.04;  
 				this.rotationSpeed = 0.02; // Vitesse de rotation
 				this.direction = new THREE.Vector3(0, 0, -1); // Direction initiale (vers le haut de l'écran)
 				
@@ -1836,23 +1932,24 @@
 				}
 			}
 			
-			// Méthode pour créer le collider (nouvelle méthode)
+			// Méthode pour créer le collider
 			createCollider() {
 				// Boîte de collision correspondant exactement au corps du robot
 				const colliderGeometry = new THREE.BoxGeometry(
 					this.bodyWidth + this.frameThickness,
-					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2)+ 0.3, //0.2 est la hauteur du canon?
+					this.bodyHeight + (this.frameThickness/2) + (this.bottomThickness/2)+ this.headHeight, 
 					this.bodyDepth
 				);
 				
 				const colliderMaterial = new THREE.MeshBasicMaterial({ 
 					transparent: true,
-					opacity: 0.0, // Invisible en production
-					wireframe: true
+					opacity: 0.0, // Invisible par défaut
+					wireframe: true,
+					color: 0xff0000 // Couleur de base rouge
 				});
 				
 				this.colliderMesh = new THREE.Mesh(colliderGeometry, colliderMaterial);
-				this.colliderMesh.position.y = 0.5; // Centré verticalement par rapport au robot
+				this.colliderMesh.position.y = (this.bodyHeight+ this.headHeight+0.4)/2; // Centré verticalement par rapport au robot
 				this.mesh.add(this.colliderMesh);
 				
 				// Définir le collider pour la détection de collision
@@ -1920,8 +2017,13 @@
 				// Vérifier les collisions
 				const collisions = this.collisionSystem.checkCollisionForObject(this);
 				
-				// Traiter les collisions
-				this.handleCollisions(collisions, oldPosition);
+			    // Traiter les collisions
+				if (collisions.length > 0) {
+					this.handleCollisions(collisions, oldPosition);
+					
+					// Réinitialiser les segments de chenilles UNIQUEMENT après avoir résolu toutes les collisions
+					this.resetTrackSegmentsToInitialPositions();
+				}
 				
 			    // Si c'est le joueur principal, envoyer la mise à jour au serveur
 				if (this.isMainPlayer && (keys.ArrowUp || keys.ArrowDown || keys.ArrowLeft || keys.ArrowRight)) {
@@ -1936,16 +2038,20 @@
 			
 			// Méthode pour gérer les collisions
 			handleCollisions(collisions, oldPosition) {
+			
 				// Séparer les collisions par type
 				const blockingCollisions = [];
 				const processorCollisions = [];
 				const cannonCollisions = [];
+				const playerCollisions = [];  
 				
 				collisions.forEach(obj => {
 					if (obj instanceof Processor) {
 						processorCollisions.push(obj);
 					} else if (obj instanceof Cannon) {
 						cannonCollisions.push(obj);
+					} else if (obj instanceof Player) {  // Ajouter ce cas pour les joueurs
+						playerCollisions.push(obj);
 					} else if (!(obj.userData && obj.userData.type === 'floor')) {
 						blockingCollisions.push(obj);
 					}
@@ -1960,9 +2066,73 @@
 					}
 				});
 				
+				// Traiter les collisions avec les joueurs en premier
+				if (playerCollisions.length > 0) {
+					this.handlePlayerCollisions(playerCollisions, oldPosition);
+				}
+				
 				// Gérer les collisions physiques avec les obstacles
 				if (blockingCollisions.length > 0) {
 					this.handlePhysicalCollisions(blockingCollisions, oldPosition);
+				}
+			}
+
+			handlePlayerCollisions(playerCollisions, oldPosition) {
+				// Direction de mouvement actuelle
+				const movementDirection = new THREE.Vector3()
+					.subVectors(this.mesh.position, oldPosition)
+					.normalize();
+				
+				// Si pas de mouvement significatif, ignorer
+				if (movementDirection.length() < 0.001) return;
+				
+				// Vérifier les collisions avec d'autres joueurs
+				let needsPositionReset = false;
+				
+				playerCollisions.forEach(otherPlayer => {
+					if (otherPlayer === this) return; // Ignorer la collision avec soi-même
+					
+					// Calculer le vecteur entre les deux joueurs
+					const pushDirection = new THREE.Vector3()
+						.subVectors(this.mesh.position, otherPlayer.mesh.position)
+						.normalize();
+					
+					// Distance entre les joueurs
+					const distance = this.mesh.position.distanceTo(otherPlayer.mesh.position);
+					
+					// Déterminer le rayon combiné (en tenant compte de l'échelle des joueurs)
+					const thisRadius = this.bodyWidth * this.baseScale * 0.75;
+					const otherRadius = this.bodyWidth * (otherPlayer.baseScale || 1.0) * 0.75;
+					const minDistance = thisRadius + otherRadius;
+					
+					// Si la distance est inférieure à la distance minimale, il y a collision
+					if (distance < minDistance) {
+						// Calculer la force de répulsion
+						const overlap = minDistance - distance;
+						
+						// Pour les joueurs de taille très différente, le plus petit rebondit plus
+						const thisScale = this.baseScale || 1.0;
+						const otherScale = otherPlayer.baseScale || 1.0;
+						const scaleFactor = Math.min(1, thisScale / otherScale);
+						
+						// Appliquer la force de répulsion (seulement sur ce joueur)
+						const pushStrength = overlap * 1.1 * scaleFactor; // Force légèrement supérieure à l'overlap
+						
+						// Revenir à l'ancienne position puis appliquer une légère poussée dans la direction opposée
+						this.mesh.position.copy(oldPosition);
+						this.mesh.position.addScaledVector(pushDirection, pushStrength);
+						
+						needsPositionReset = true;
+					}
+				});
+				
+				// Si une collision a été résolue, informer le serveur de la nouvelle position
+				if (needsPositionReset && this.isMainPlayer) {
+					socket.emit('playerUpdate', {
+						position: this.mesh.position,
+						rotation: this.mesh.rotation.y,
+						direction: this.direction
+					});
 				}
 			}
 
@@ -2169,7 +2339,6 @@
 			addSideCannon() {
 				// Vérifier si on a atteint le nombre maximum de canons
 				if (this.sideCannons.length >= this.maxSideCannons) {
-					console.log("Nombre maximum de canons atteint");
 					return false;
 				}
 				
@@ -2808,6 +2977,8 @@
 				
 				// Créer les colonnes d'indicateurs de processeurs
 				this.createProcessorColumns();
+				
+				this.storeAllInitialPositions();
 			}
 			
 			// Créer les colonnes d'indicateurs pour les processeurs
@@ -3050,26 +3221,6 @@
 				createGuides(0.2);
 			}
 			
-			resetTrackSegmentsToInitialPositions() {
-				// Réinitialiser les segments gauches
-				if (this.leftTrackSegments && this.leftTrackInitialPositions) {
-					this.leftTrackSegments.forEach((segment, index) => {
-						if (index < this.leftTrackInitialPositions.length) {
-							segment.position.copy(this.leftTrackInitialPositions[index]);
-						}
-					});
-				}
-				
-				// Réinitialiser les segments droits
-				if (this.rightTrackSegments && this.rightTrackInitialPositions) {
-					this.rightTrackSegments.forEach((segment, index) => {
-						if (index < this.rightTrackInitialPositions.length) {
-							segment.position.copy(this.rightTrackInitialPositions[index]);
-						}
-					});
-				}
-			}
-	
 			// Créer le canon
 			createCannon() {
 				// Créer la tête du robot avec la caméra et le canon
@@ -3078,8 +3229,25 @@
 				this.storeAllInitialPositions();
 			}
 			
-			//Stocker les positions initiales
+			// Stocker les positions initiales
 			storeAllInitialPositions() {
+				// STOCKAGE DES POSITIONS DU CORPS ET DE LA TÊTE
+				// Corps du robot
+				if (this.bodyGroup) {
+					this.bodyGroupInitialState = {
+						position: this.bodyGroup.position.clone(),
+						rotation: this.bodyGroup.rotation.clone()
+					};
+				}
+				
+				// Tête du robot
+				if (this.headGroup) {
+					this.headGroupInitialState = {
+						position: this.headGroup.position.clone(),
+						rotation: this.headGroup.rotation.clone()
+					};
+				}
+				
 				// STOCKAGE DES POSITIONS DES CANONS
 				// Canon principal
 				if (this.cannonBarrel) {
@@ -3193,6 +3361,7 @@
 				
 				// Ajouter aux parties du corps
 				this.bodyParts.push(this.headBase, this.dome, this.lens, this.cannonBarrel);
+				this.storeAllInitialPositions();
 			}
 			
 			// Ajouter des détails au canon
@@ -3234,6 +3403,8 @@
 						}
 					});
 				}
+				// Forcer la position Y du robot à une valeur fixe très basse
+				this.mesh.position.y = 0.01;
 			}
 			
 			// Méthode pour mettre à jour l'interface utilisateur
@@ -3551,8 +3722,8 @@
         let cameraController = null;
 
         // Positionnement et configuration de la caméra
-        camera.position.set(0, 100, 0); // Position la caméra en hauteur et en retrait
-        camera.lookAt(0,0,0); // Oriente la caméra vers le joueur
+        camera.position.set(0, 10000, 0); // Position la caméra en hauteur et en retrait
+        camera.lookAt(50,0,50); // Oriente la caméra
 
         // Gestion des touches
         const keys = { 
@@ -3646,7 +3817,7 @@
 				cameraController.updateCamera(camera);
 			} else {
 				// Default camera position when no player exists
-				camera.position.set(0, 30, 30);
+				camera.position.set(0, 100, 0);
 				camera.lookAt(0, 0, 0); // Look at the center of the map
 			}
 		}
@@ -3667,7 +3838,6 @@
 				
 				// Traiter les structures statiques
 				if (state.structures) {
-					console.log(`Structures reçues: ${Object.keys(state.structures).length}`);
 					// IMPORTANT : Vider les structures existantes avant d'en créer de nouvelles
 					gameMap.structures.forEach(structure => {
 					  if (structure.destroy) structure.destroy();
@@ -3675,7 +3845,6 @@
 					gameMap.structures = [];
 					
 					Object.values(state.structures).forEach(structureData => {
-						console.log(`Création de la structure ${structureData.id} de type ${structureData.type}`);
 						createServerStructure(structureData);
 					});
 				} else {
@@ -3819,7 +3988,7 @@
 					
 					// Add null check for mesh and position
 					if (otherPlayers[data.id].mesh && otherPlayers[data.id].mesh.position) {
-						createDamageText(otherPlayers[data.id].mesh.position, data.damage);
+						//createDamageText(otherPlayers[data.id].mesh.position, data.damage);
 					}
 					
 					// S'assurer que les couleurs originales sont stockées
@@ -3962,6 +4131,56 @@
 			  setTimeout(() => {
 				window.location.reload(true); // Le paramètre true force un rechargement depuis le serveur
 			  }, 500);
+			});
+			
+			socket.on('createBotCollider', (data) => {
+			  
+			  // Vérifier si ce bot existe déjà dans les autres joueurs
+			  if (otherPlayers[data.botId]) {
+				console.log('Bot déjà existant, mise à jour du collider');
+				
+				// MODIFIÉ: Forcer la création/mise à jour du collider, peu importe hasCollision
+				// Créer le collider sans vérification
+				otherPlayers[data.botId].createCollider();
+				otherPlayers[data.botId].hasCollision = true;
+
+				// Ajouter au système de collision
+				if (collisionSystem) {
+				  collisionSystem.addObject(otherPlayers[data.botId]);
+				}
+			  } else {
+				// Créer un joueur pour le bot avec un collider
+				const botPlayer = new Player(scene, gameMap, collisionSystem, data.botId, false);
+				botPlayer.username = data.username;
+				botPlayer.mesh.position.copy(data.position);
+				botPlayer.mesh.rotation.y = data.rotation;
+				
+				// S'assurer que le collider est créé
+				botPlayer.createCollider();
+				botPlayer.hasCollision = true;
+				
+				// AJOUT: Rendre le collider visible immédiatement
+				if (botPlayer.colliderMesh) {
+				  botPlayer.colliderMesh.material.opacity = 0.5; // Plus visible pour le test
+				  botPlayer.colliderMesh.material.color.set(0x00ff00); // Vert
+				  console.log('Collider créé et rendu visible pour le nouveau bot:', data.botId);
+				} else {
+				  console.log('colliderMesh non trouvé pour le nouveau bot:', data.botId);
+				}
+				
+				// Ajouter au système de collision
+				if (collisionSystem) {
+				  collisionSystem.addObject(botPlayer);
+				}
+				
+				// Stocker dans otherPlayers
+				otherPlayers[data.botId] = botPlayer;
+				
+				// Ajouter le tag de nom
+				addPlayerNameTag(botPlayer);
+				
+				console.log(`Bot ${data.botId} ajouté en tant que joueur avec collider`);
+			  }
 			});
 		
 		}
@@ -4260,7 +4479,7 @@
 			
 			// Si le joueur est hors du champ de vision ou trop loin de la caméra
 			if (Math.abs(tempVector.x) > 1.1 || Math.abs(tempVector.y) > 1.1 || 
-				tempVector.z > 1.1 || calculateDistanceToCamera(player.mesh.position) > 100) {
+				tempVector.z > 1.1 || calculateDistanceToCamera(player.mesh.position) > 150) {
 				player.nameTag.style.display = 'none';
 				return;
 			} else {
@@ -4428,7 +4647,6 @@
 			}
 			// Stocker l'ID du projectile venant du serveur
 			projectile.id = projectileData.id;
-			console.log(`Projectile créé: ${projectileData.id} par joueur ${projectileData.ownerId}`);
 			
 			// Ajouter à la liste des projectiles du propriétaire seulement si le propriétaire existe encore
 			if (projectileData.ownerId === socket.id) {
@@ -4856,7 +5074,7 @@
 			} else {
 				// Si le joueur n'existe pas encore ou si le jeu n'a pas commencé,
 				// on peut quand même rendre la scène avec une caméra statique
-				camera.position.set(0, 30, 30);
+				camera.position.set(0, 100, 0);
 				camera.lookAt(0, 0, 0);
 				
 				// On peut toujours animer certains éléments de la scène pour une apparence plus vivante
