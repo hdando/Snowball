@@ -386,14 +386,14 @@
 				// Paramètres de la caméra
 				this.distance = 30;      // Distance entre la caméra et le joueur
 				this.minDistance = 5;    // Distance minimale (pour zoom)
-				this.maxDistance = 100;  // Distance maximale (pour zoom)
+				this.maxDistance = 50;  // Distance maximale (pour zoom)
 				this.height = 10;        // Hauteur relative de la caméra
 				
 				// Angles de rotation (en radians)
 				this.rotationHorizontal = Math.PI;  // Rotation horizontale autour du joueur (commence derrière)
 				this.rotationVertical = Math.PI / 6;  // Rotation verticale (inclinaison)
-				this.minVerticalRotation = -0.2;  // Limite pour ne pas passer sous le sol
-				this.maxVerticalRotation = Math.PI / 2 - 0.1;  // Limite pour ne pas passer au-dessus
+				this.minVerticalRotation = 0.01;  // Limite pour ne pas passer sous le sol
+				this.maxVerticalRotation = Math.PI / 2 - 0.01;  // Limite pour ne pas passer au-dessus
 				
 				// État de la souris
 				this.isMouseDown = false;
