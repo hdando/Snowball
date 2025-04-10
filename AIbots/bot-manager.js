@@ -1,965 +1,1240 @@
-const fs = require('fs');
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-const THREE = require('three'); // Importer Three.js
+const BotManager = require('./AIbots/bot-manager');
 
-class BotManager {
-  constructor(io, gameState) {
-    this.io = io;
-    this.gameState = gameState;
-    this.bots = [];
-    this.botInstances = {};
-    this.lastPositions = {}; // Pour suivre les positions précédentes des bots
-    this.stuckCounters = {}; // Pour suivre les bots potentiellement bloqués
-    
-    // Stockage d'état des touches pour chaque bot
-    this.botInputs = {};
-    
-    // Intervalle de collecte automatique
-    this.collectionCheckInterval = null;
-    
-    // Suivi des canons latéraux pour chaque bot
-    this.botSideCannons = {};
-  }
+// Créer l'application Express
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000  // Augmenter le timeout
+});
 
-  loadBots() {	  
-    // Charger dynamiquement tous les bots
-    const botsFolder = path.join(__dirname);
-    const botFiles = fs.readdirSync(botsFolder)
-      .filter(file => file.endsWith('-bot.js'));
-    
-    console.log("Fichiers de bots détectés:", botFiles);
-    
-    botFiles.forEach(file => {
-      try {
-        const BotClass = require(path.join(botsFolder, file));
-        const botName = file.replace('-bot.js', '').toUpperCase();
-        this.bots.push({ name: botName, BotClass });
-        console.log(`Bot ${botName} chargé avec succès`);
-      } catch (error) {
-        console.error(`Failed to load bot: ${file}`, error);
-      }
-    });
+// Servir les fichiers statiques
+app.use(express.static(path.join(__dirname, 'public')));
 
-    console.log(`Loaded ${this.bots.length} AI bots`);
-  }
+// CONSTANTES ET UTILITAIRES
+// -------------------------
 
-  spawnBots() {
-    // Pour chaque type de bot disponible
-    this.bots.forEach(bot => {
-      // Vérifier combien d'instances de ce type de bot existent déjà
-      const existingBots = Object.values(this.botInstances).filter(
-        instance => instance.constructor.name === bot.BotClass.name
-      );
-      
-      // Limiter à une seule instance par type de bot
-      if (existingBots.length === 0) {
-        // Générer un ID unique pour ce bot
-        const botId = `bot-${bot.name}-${uuidv4().substring(0, 8)}`;
-        
-        // Créer une instance du bot avec le nouveau système d'inputs
-        const botInstance = new bot.BotClass(
-          botId,
-          this.gameState,
-          this.sendInputs.bind(this, botId)
-        );
-        
-        // Stocker l'instance du bot
-        this.botInstances[botId] = botInstance;
-        this.lastPositions[botId] = null;
-        this.stuckCounters[botId] = 0;
-        this.botSideCannons[botId] = 0; // Initialiser à 0 canons latéraux
-        
-        // Initialiser les inputs du bot
-        this.botInputs[botId] = {
-          forward: false,
-          backward: false,
-          left: false,
-          right: false,
-          fire: false
-        };
-        
-        // Générer une position aléatoire pour le bot
-        const position = this.generateRandomPosition();
-        const randomRotation = Math.random() * Math.PI * 2;
-        
-        // Créer le vecteur de direction avec Three.js
-        const directionVector = new THREE.Vector3(0, 0, -1).applyAxisAngle(
-          new THREE.Vector3(0, 1, 0), 
-          randomRotation
-        );
-        
-        // Ajouter directement le bot à l'état du jeu
-        this.gameState.players[botId] = {
-          id: botId,
-          position: position,
-          rotation: randomRotation,
-          // Convertir le vecteur Three.js en objet simple
-          direction: {
-            x: directionVector.x,
-            y: directionVector.y,
-            z: directionVector.z
-          },
-          stats: this.getDefaultPlayerStats(),
-          hp: 100,
-          maxHp: 100,
-          isAlive: true,
-          username: `AI-${bot.name}`
-        };
-        
-        // Informer tous les clients du nouveau bot
-        this.io.emit('playerJoined', {
-          id: botId,
-          ...this.gameState.players[botId]
-        });
-        
-        // Ajouter le bot au système de collision
-        this.addBotToCollisionSystem(botId);
-        
-        console.log(`Bot ${bot.name} créé avec l'ID: ${botId}`);
-      } else {
-        console.log(`Un bot de type ${bot.name} existe déjà, pas de nouvelle instance créée.`);
-      }
-    });
-    
-    // Démarrer la vérification périodique pour la collecte de processeurs
-    if (!this.collectionCheckInterval) {
-      this.collectionCheckInterval = setInterval(() => {
-        this.checkProcessorCollection();
-        this.checkCannonCollection();
-      }, 200); // Vérifier toutes les 200ms
-    }
-    
-    // Afficher les joueurs après le spawn pour vérification
-    console.log("État du jeu après spawn des bots:", 
-      Object.keys(this.gameState.players).map(id => ({
-        id, 
-        username: this.gameState.players[id].username
-      }))
-    );
-  }
+// Limites de la carte pour validation
+const MAP_BOUNDS = {
+  radius: 100,  // Rayon du cercle
+  minY: 0, maxY: 10
+};
+
+// Vérifier si une position est valide (dans les limites de la carte)
+function isValidPosition(position) {
+  if (!position || typeof position !== 'object') return false;
   
-  // Méthode pour vérifier si les bots peuvent collecter des processeurs
-  checkProcessorCollection() {
-    if (!this.gameState.processors) return;
-    
-    // Pour chaque bot
-    Object.keys(this.botInstances).forEach(botId => {
-      const bot = this.gameState.players[botId];
-      if (!bot || !bot.isAlive) return;
-      
-      // Pour chaque processeur, vérifier si le bot est assez proche
-      Object.entries(this.gameState.processors).forEach(([processorId, processor]) => {
-        // Convertir en Vector3 pour utiliser les méthodes de Three.js
-        const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
-        const processorPosition = new THREE.Vector3(
-          processor.position.x, 
-          processor.position.y, 
-          processor.position.z
-        );
-        
-        // Calculer la distance avec Three.js
-        const distance = botPosition.distanceTo(processorPosition);
-        
-        // Distance de collecte (ajustée pour l'échelle du bot)
-        let collectDistance = 2;
-        if (bot.stats && bot.stats.processorCounts) {
-          const totalProcessors = Object.values(bot.stats.processorCounts)
-            .reduce((sum, count) => sum + count, 0);
-          collectDistance *= (0.9 + (totalProcessors * 0.005));
-        }
-        
-        // Si assez proche, déclencher la collecte
-        if (distance <= collectDistance) {
-          this.collectProcessor(botId, processorId, processor);
-        }
-      });
-    });
-  }
+  // Calculer la distance du centre (0,0)
+  const distanceFromCenter = Math.sqrt(
+    Math.pow(position.x, 2) + 
+    Math.pow(position.z, 2)
+  );
   
-  // Méthode pour vérifier si les bots peuvent collecter des canons
-  checkCannonCollection() {
-    if (!this.gameState.cannons) return;
-    
-    // Pour chaque bot
-    Object.keys(this.botInstances).forEach(botId => {
-      const bot = this.gameState.players[botId];
-      if (!bot || !bot.isAlive) return;
-      
-      // Pour chaque canon, vérifier si le bot est assez proche
-      Object.entries(this.gameState.cannons).forEach(([cannonId, cannon]) => {
-        // Utiliser Three.js pour le calcul de distance
-        const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
-        const cannonPosition = new THREE.Vector3(
-          cannon.position.x, 
-          cannon.position.y, 
-          cannon.position.z
-        );
-        
-        const distance = botPosition.distanceTo(cannonPosition);
-        
-        // Distance de collecte (ajustée pour l'échelle du bot)
-        let collectDistance = 2;
-        if (bot.stats && bot.stats.processorCounts) {
-          const totalProcessors = Object.values(bot.stats.processorCounts)
-            .reduce((sum, count) => sum + count, 0);
-          collectDistance *= (0.9 + (totalProcessors * 0.005));
-        }
-        
-        // Si assez proche, déclencher la collecte
-        if (distance <= collectDistance) {
-          this.collectCannon(botId, cannonId, cannon);
-        }
-      });
-    });
-  }
+  return (
+    distanceFromCenter <= MAP_BOUNDS.radius &&
+    position.y >= MAP_BOUNDS.minY && 
+    position.y <= MAP_BOUNDS.maxY
+  );
+}
+
+// Calculer la distance entre deux positions
+function calculateDistance(pos1, pos2) {
+  if (!pos1 || !pos2) return Infinity;
+  return Math.sqrt(
+    Math.pow(pos2.x - pos1.x, 2) +
+    Math.pow(pos2.y - pos1.y, 2) +
+    Math.pow(pos2.z - pos1.z, 2)
+  );
+}
+
+// Fonctions de validation diverses
+function isInRange(value, min, max) {
+  return value >= min && value <= max;
+}
+
+function validateNumber(value, min, max, defaultValue) {
+  if (typeof value !== 'number' || isNaN(value)) return defaultValue;
+  return isInRange(value, min, max) ? value : defaultValue;
+}
+
+// ÉTAT DU JEU
+// -----------
+
+// États du jeu
+const GameState = {
+  PLAYING: 'playing',    // Jeu en cours (59 minutes)
+  PODIUM: 'podium',      // Affichage du podium (1 minute)
+  RESTARTING: 'restarting' // Redémarrage (quelques secondes)
+};
+
+// Configuration des durées (en millisecondes)
+const GAME_DURATION = 10 * 60 * 1000;  // 10 minutes
+const PODIUM_DURATION = 30 * 1000;     // 30 secondes
+const RESTART_DURATION = 5 * 1000;     // 5 secondes pour le redémarrage
+
+// État actuel du jeu
+let currentGameState = {
+  state: GameState.PLAYING,
+  startTime: Date.now(),
+  endTime: Date.now() + GAME_DURATION,
+  winners: [],
+  gameId: generateGameId()
+};
+
+// État du jeu (données)
+const gameState = {
+  players: {},
+  processors: {},
+  cannons: {},
+  projectiles: {},
+  structures: {}
+};
+
+// Initialisation du gestionnaire de bots
+const botManager = new BotManager(io, gameState);
+console.log("====== BOT MANAGER CRÉÉ ======");
+try {
+  botManager.loadBots();
+  console.log("====== BOTS CHARGÉS ======");
+} catch (error) {
+  console.error("ERREUR CHARGEMENT BOTS:", error);
+}
+
+// Compteurs pour les IDs
+let processorId = 0;
+let cannonId = 0;
+let projectileId = 0;
+
+// Fonction pour générer un ID unique pour chaque partie
+function generateGameId() {
+  return `game-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+}
+
+// Validation des stats du joueur
+function validatePlayerStats(stats) {
+  if (!stats) return getDefaultPlayerStats();
   
-  // Méthode pour collecter un canon par un bot
-  collectCannon(botId, cannonId, cannon) {
-    const bot = this.gameState.players[botId];
-    if (!bot) return;
-    
-    // Limiter le nombre de canons latéraux (comme pour les joueurs)
-    const maxSideCannons = 4;
-    if (this.botSideCannons[botId] >= maxSideCannons) {
-      return; // Ne pas collecter plus de canons que la limite
+  const defaultStats = getDefaultPlayerStats();
+  return {
+    resistance: validateNumber(stats.resistance, 0, 1000, defaultStats.resistance),
+    attack: validateNumber(stats.attack, 0, 1000, defaultStats.attack),
+    attackSpeed: validateNumber(stats.attackSpeed, 0.01, 10, defaultStats.attackSpeed),
+    range: validateNumber(stats.range, 1, 100, defaultStats.range),
+    speed: validateNumber(stats.speed, 0.001, 0.2, defaultStats.speed),
+    repairSpeed: validateNumber(stats.repairSpeed, 0, 10, defaultStats.repairSpeed),
+    processorCounts: stats.processorCounts || defaultStats.processorCounts
+  };
+}
+
+// Obtenir les stats par défaut pour un joueur
+function getDefaultPlayerStats() {
+  return {
+    resistance: 10,
+    attack: 10,
+    attackSpeed: 0.5,
+    range: 10,
+    speed: 0.02,
+    repairSpeed: 0.5,
+    processorCounts: {
+      hp: 0,
+      resistance: 0,
+      attack: 0,
+      attackSpeed: 0, 
+      range: 0,
+      speed: 0,
+      repairSpeed: 0
     }
-    
-    // Supprimer le canon de l'état du jeu
-    delete this.gameState.cannons[cannonId];
-    
-    // Informer tous les clients
-    this.io.emit('cannonRemoved', {
-      id: cannonId
-    });
-    
-    // Incrémenter le compteur de canons pour ce bot
-    this.botSideCannons[botId]++;
-    
-    // Notifier les bots de la collecte
-    this.notifyBots('cannonCollected', {
-      id: cannonId,
-      playerId: botId
-    });
-    
-    console.log(`Bot ${botId} a collecté un canon latéral (total: ${this.botSideCannons[botId]})`);
-  }
+  };
+}
+
+// CYCLE DE JEU
+// ------------
+
+// Gestion du cycle de jeu
+function startGameCycle() {
+  console.log("====== DÉMARRAGE CYCLE DE JEU ======");
+  // Réinitialiser correctement les temps
+  currentGameState.startTime = Date.now();
+  currentGameState.endTime = Date.now() + GAME_DURATION;
   
-  // Méthode pour collecter un processeur par un bot
-  collectProcessor(botId, processorId, processor) {
-    const bot = this.gameState.players[botId];
-    if (!bot || !processor) return;
-    
-    // Supprimer le processeur de l'état du jeu
-    delete this.gameState.processors[processorId];
-    
-    // Informer tous les clients
-    this.io.emit('processorRemoved', {
-      id: processorId
-    });
-    
-    // Mettre à jour les stats du bot
-    if (!bot.stats) {
-      bot.stats = this.getDefaultPlayerStats();
-    }
-    
-    if (!bot.stats.processorCounts) {
-      bot.stats.processorCounts = {
-        hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
-        range: 0, speed: 0, repairSpeed: 0
-      };
-    }
-    
-    // Appliquer le boost selon le type
-    const processorType = processor.type;
-    const boostValue = processor.boost;
-    
-    switch(processorType) {
-      case 'hp':
-        bot.maxHp += boostValue;
-        bot.hp += boostValue;
-        break;
-      case 'resistance':
-      case 'attack':
-      case 'attackSpeed':
-      case 'range':
-      case 'speed': 
-      case 'repairSpeed':
-        bot.stats[processorType] += boostValue;
-        break;
-    }
-    
-    // Incrémenter le compteur
-    bot.stats.processorCounts[processorType]++;
-    
-    // Calculer le total des processeurs
-    const totalProcessors = Object.values(bot.stats.processorCounts)
-      .reduce((sum, count) => sum + count, 0);
-    
-    // Diffuser la mise à jour des stats
-    this.io.emit('playerStatsUpdated', {
-      id: botId,
-      stats: bot.stats,
-      hp: bot.hp,
-      maxHp: bot.maxHp,
-      totalProcessors: totalProcessors
-    });
-    
-    // Notifier les bots de la collecte
-    this.notifyBots('processorCollected', {
-      id: processorId,
-      type: processorType,
-      playerId: botId
-    });
-    
-    console.log(`Bot ${botId} a collecté un processeur de type ${processorType}`);
-  }
+  console.log(`Nouvelle partie démarrée: ${currentGameState.gameId}`);
+  console.log(`La partie se terminera à: ${new Date(currentGameState.endTime).toLocaleTimeString()}`);
   
-  // Méthode pour recevoir les inputs d'un bot et les stocker
-  sendInputs(botId, inputs) {
-    // Valider l'existence du bot
-    if (!this.botInstances[botId] || !this.gameState.players[botId]) {
-      return;
-    }
-    
-    // Actualiser les inputs du bot
-    this.botInputs[botId] = {
-      forward: !!inputs.forward,
-      backward: !!inputs.backward,
-      left: !!inputs.left,
-      right: !!inputs.right,
-      fire: !!inputs.fire
-    };
-  }
-  
-  // Méthode pour ajouter un bot au système de collision
-  addBotToCollisionSystem(botId) {
+  // Spawn des bots après une courte pause pour s'assurer que le jeu est prêt
+  setTimeout(() => {
+    console.log("====== SPAWN DES BOTS ======");
     try {
-      if (!this.gameState.players[botId]) {
-        console.error(`Bot ${botId} non trouvé dans l'état du jeu, impossible d'ajouter au système de collision`);
-        return;
-      }
-      
-      console.log(`Bot ${botId} ajouté au système de collision`);
-      
-      // Vérifier à nouveau que le bot existe toujours après le délai
-      if (this.gameState.players[botId]) {
-        console.log(`Envoi différé de createBotCollider pour ${botId} après 2 secondes`);
-        
-        this.io.emit('createBotCollider', {
-          botId: botId,
-          position: this.gameState.players[botId].position,
-          rotation: this.gameState.players[botId].rotation,
-          username: this.gameState.players[botId].username,
-          hasCollision: true
-        });
-      } else {
-        console.log(`Bot ${botId} n'existe plus après le délai, annulation de la création du collider`);
-      }
+      botManager.spawnBots();
+      console.log("====== BOTS SPAWNED ======");
     } catch (error) {
-      console.error(`Erreur lors de l'ajout du bot ${botId} au système de collision:`, error);
+      console.error("ERREUR SPAWN BOTS:", error);
     }
-  }
+  }, 1000);
   
-  generateRandomPosition() {
-    const angle = Math.random() * Math.PI * 2;
-    const mapRadius = 100;
-    const minRadius = mapRadius * 0.90;
-    const maxRadius = mapRadius * 0.95;
-    const radius = minRadius + Math.random() * (maxRadius - minRadius);
-    
-    // Utiliser Three.js pour générer le vecteur
-    const randomVector = new THREE.Vector3(
-      Math.cos(angle) * radius,
-      0, // Y = 0 (hauteur au sol)
-      Math.sin(angle) * radius
-    );
-    
-    // Retourner un objet simple pour compatibilité
-    return {
-      x: randomVector.x,
-      y: randomVector.y,
-      z: randomVector.z
-    };
-  }
+  // Créer un intervalle pour les mises à jour des bots
+  const botUpdateInterval = setInterval(() => {
+    botManager.updateBots();
+  }, 15); // Mettre à jour les bots toutes les 15 ms
   
-  getDefaultPlayerStats() {
-    return {
-      resistance: 10,
-      attack: 10,
-      attackSpeed: 0.5,
-      range: 10,
-      speed: 0.04,
-      repairSpeed: 0.5,
-      processorCounts: {
-        hp: 0,
-        resistance: 0,
-        attack: 0,
-        attackSpeed: 0,
-        range: 0,
-        speed: 0,
-        repairSpeed: 0
-      }
-    };
-  }
+  // Planifier la fin de la partie en utilisant l'endTime calculé
+  const timeToEnd = currentGameState.endTime - Date.now();
+  
+  // Planifier la fin de la partie
+  setTimeout(() => {
+    // Arrêter les mises à jour des bots
+    clearInterval(botUpdateInterval);  
+    botManager.cleanupBots();
+    
+    endGame();
+  }, timeToEnd); // Utiliser le temps calculé, pas GAME_DURATION directement
+}
 
-  updateBots() {
-    // Vérifier si des bots sont manquants
-    Object.keys(this.botInstances).forEach(botId => {
-      if (!this.gameState.players[botId]) {
-        console.log(`Bot ${botId} manquant dans l'état du jeu, tentative de réinsertion`);
-        
-        // Réinsérer le bot dans l'état du jeu
-        const botName = botId.split('-')[1] || 'BOT';
-        
-        // Générer une position et direction avec Three.js
-        const randomPosition = this.generateRandomPosition();
-        const randomRotation = Math.random() * Math.PI * 2;
-        
-        // Créer le vecteur de direction avec Three.js
-        const direction = new THREE.Vector3(0, 0, -1)
-          .applyAxisAngle(new THREE.Vector3(0, 1, 0), randomRotation);
-        
-        this.gameState.players[botId] = {
-          id: botId,
-          position: randomPosition,
-          rotation: randomRotation,
-          direction: {
-            x: direction.x,
-            y: direction.y,
-            z: direction.z
-          },
-          stats: this.getDefaultPlayerStats(),
-          hp: 100,
-          maxHp: 100,
-          isAlive: true,
-          username: `AI-${botName}`
-        };
-        
-        // Informer tous les clients
-        this.io.emit('playerJoined', {
-          id: botId,
-          ...this.gameState.players[botId]
-        });
-        
-        // Ajouter au système de collision
-        this.addBotToCollisionSystem(botId);
-      }
-    });
-    
-    // Copie de l'état du jeu pour les bots
-    const gameStateCopy = JSON.parse(JSON.stringify(this.gameState));
-    
-    // Mettre à jour chaque bot (demander leur nouvelle intention d'inputs)
-    Object.entries(this.botInstances).forEach(([botId, bot]) => {
-      if (bot.update && this.gameState.players[botId] && this.gameState.players[botId].isAlive) {
-        try {
-          bot.update(gameStateCopy);
-        } catch (error) {
-          console.error(`Erreur lors de la mise à jour du bot ${botId}:`, error);
-        }
-      }
-    });
-    
-    // Traiter les inputs de chaque bot et les appliquer
-    this.processBotInputs();
-    
-    // Vérifier si les bots sont bloqués
-    this.checkForStuckBots();
-  }
+// Fonction pour terminer la partie et afficher le podium
+function endGame() {
+  currentGameState.state = GameState.PODIUM;
+  currentGameState.winners = determineWinners();
   
-  // Calcule la distance entre 2 positions en utilisant Three.js
-  calculateDistance(pos1, pos2) {
-    if (!pos1 || !pos2) return Infinity;
-    
-    const vector1 = new THREE.Vector3(pos1.x, pos1.y, pos1.z);
-    const vector2 = new THREE.Vector3(pos2.x, pos2.y, pos2.z);
-    
-    return vector1.distanceTo(vector2);
-  }
+  console.log('Partie terminée. Affichage du podium...');
+  console.log('Gagnants:', currentGameState.winners.map(w => w.username));
+  
+  // Informer tous les joueurs de la fin de partie
+  io.emit('gameEnded', {
+    winners: currentGameState.winners,
+    duration: PODIUM_DURATION
+  });
+  
+  // Planifier le redémarrage
+  setTimeout(() => {
+    prepareRestart();
+  }, PODIUM_DURATION);
+}
 
-  // Process bot inputs avec Three.js
-  processBotInputs() {
-    Object.entries(this.botInputs).forEach(([botId, inputs]) => {
-      const bot = this.gameState.players[botId];
-      if (!bot || !bot.isAlive) return;
-      
-      // Get bot stats
-      const botSpeed = bot.stats?.speed || 0.04;
-      const botRotationSpeed = 0.02;
-      
-      // Convertir la position et la rotation en objets Three.js
-      const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
-      const botDirection = new THREE.Vector3(bot.direction.x, bot.direction.y, bot.direction.z);
-      let botRotation = bot.rotation;
-      
-      // Mémoriser la position d'origine pour les collisions
-      const originalPosition = botPosition.clone();
-      
-      // Appliquer les rotations
-      if (inputs.left) {
-        botRotation += botRotationSpeed;
-        // Recalculer la direction avec Three.js
-        botDirection.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), botRotation);
-      }
-      if (inputs.right) {
-        botRotation -= botRotationSpeed;
-        // Recalculer la direction avec Three.js
-        botDirection.set(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), botRotation);
-      }
-      
-      // Calculer la nouvelle position potentielle
-      const newPosition = botPosition.clone();
-      if (inputs.forward) {
-        // Ajouter un vecteur de direction mis à l'échelle par la vitesse
-        newPosition.add(botDirection.clone().multiplyScalar(botSpeed));
-      }
-      if (inputs.backward) {
-        // Soustraire un vecteur de direction mis à l'échelle par la vitesse
-        newPosition.sub(botDirection.clone().multiplyScalar(botSpeed));
-      }
-      
-      // Vérifier les collisions
-      let willCollide = false;
-      
-      // Vérifier les collisions avec les autres joueurs
-      Object.entries(this.gameState.players).forEach(([playerId, player]) => {
-        if (playerId === botId || !player.isAlive) return;
-        
-        const playerPosition = new THREE.Vector3(
-          player.position.x, 
-          player.position.y, 
-          player.position.z
-        );
-        
-        // Calculer la distance avec Three.js
-        const distance = newPosition.distanceTo(playerPosition);
-        
-        // Ajuster les rayons de collision en fonction de l'échelle
-        let playerScale = 1.0;
-        if (player.stats && player.stats.processorCounts) {
-          const totalProcessors = Object.values(player.stats.processorCounts)
-            .reduce((sum, count) => sum + count, 0);
-          playerScale = 1.0 + (totalProcessors * 0.005);
-        }
-        
-        let botScale = 1.0;
-        if (bot.stats && bot.stats.processorCounts) {
-          const totalProcessors = Object.values(bot.stats.processorCounts)
-            .reduce((sum, count) => sum + count, 0);
-          botScale = 1.0 + (totalProcessors * 0.005);
-        }
-        
-        // Rayon de collision combiné
-        const combinedRadius = (0.75 * botScale) + (0.75 * playerScale);
-        
-        if (distance < combinedRadius) {
-          willCollide = true;
-        }
-      });
-      
-      // Vérifier les collisions avec les structures
-      Object.values(this.gameState.structures).forEach(structure => {
-        if (structure.destroyed) return;
-        
-        const structurePosition = new THREE.Vector3(
-          structure.position.x, 
-          structure.position.y, 
-          structure.position.z
-        );
-        
-        const distance = newPosition.distanceTo(structurePosition);
-        // Rayon de collision différent selon le type de structure
-        const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
-        
-        if (distance < collisionRadius) {
-          willCollide = true;
-        }
-      });
-      
-      // Si collision détectée, essayer des directions alternatives
-      if (willCollide) {
-        // Créer des directions alternatives
-        const potentialAngles = [
-          botRotation + Math.PI/4,  // 45° droite
-          botRotation - Math.PI/4,  // 45° gauche
-          botRotation + Math.PI/2,  // 90° droite
-          botRotation - Math.PI/2,  // 90° gauche
-          botRotation + Math.PI     // Inverse
-        ];
-        
-        // Convertir les angles en vecteurs
-        const potentialDirections = potentialAngles.map(angle => {
-          const dir = new THREE.Vector3(
-            Math.sin(angle),
-            0,
-            Math.cos(angle)
-          );
-          return dir;
-        });
-        
-        let foundValidDirection = false;
-        
-        for (const dir of potentialDirections) {
-          // Position de test en utilisant Three.js
-          const testPosition = originalPosition.clone().addScaledVector(dir, botSpeed);
-          
-          // Vérifier si la direction est libre
-          let directionClear = true;
-          
-          // Vérifier les joueurs
-          Object.entries(this.gameState.players).forEach(([playerId, player]) => {
-            if (playerId === botId || !player.isAlive) return;
-            
-            const playerPosition = new THREE.Vector3(
-              player.position.x, 
-              player.position.y, 
-              player.position.z
-            );
-            
-            // Calculer les rayons de collision précis
-            let playerScale = 1.0;
-            if (player.stats && player.stats.processorCounts) {
-              const totalProcessors = Object.values(player.stats.processorCounts)
-                .reduce((sum, count) => sum + count, 0);
-              playerScale = 1.0 + (totalProcessors * 0.005);
-            }
-            
-            let botScale = 1.0;
-            if (bot.stats && bot.stats.processorCounts) {
-              const totalProcessors = Object.values(bot.stats.processorCounts)
-                .reduce((sum, count) => sum + count, 0);
-              botScale = 1.0 + (totalProcessors * 0.005);
-            }
-            
-            // Rayon combiné basé sur la taille des joueurs
-            const combinedRadius = (0.75 * botScale) + (0.75 * playerScale);
-            
-            if (testPosition.distanceTo(playerPosition) < combinedRadius) {
-              directionClear = false;
-            }
-          });
-          
-          // Vérifier les structures
-          Object.values(this.gameState.structures).forEach(structure => {
-            if (structure.destroyed) return;
-            
-            const structurePosition = new THREE.Vector3(
-              structure.position.x, 
-              structure.position.y, 
-              structure.position.z
-            );
-            
-            const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
-            
-            if (testPosition.distanceTo(structurePosition) < collisionRadius) {
-              directionClear = false;
-            }
-          });
-          
-          if (directionClear) {
-            // Utiliser la nouvelle position
-            newPosition.copy(testPosition);
-            foundValidDirection = true;
-            break;
-          }
-        }
-        
-        // Si aucune direction valide n'est trouvée, rester sur place
-        if (!foundValidDirection) {
-          newPosition.copy(originalPosition);
-        }
-      }
-      
-      // Gérer le tir
-      if (inputs.fire) {
-        this.handleBotShoot(botId);
-      }
-      
-      // Mettre à jour la position, rotation et direction du bot dans l'état du jeu
-      bot.position = {
-        x: newPosition.x,
-        y: newPosition.y,
-        z: newPosition.z
+// Préparer le redémarrage de la partie
+function prepareRestart() {
+  currentGameState.state = GameState.RESTARTING;
+  
+  console.log('Préparation du redémarrage...');
+  
+  // Informer tous les joueurs du redémarrage imminent
+  io.emit('gameRestarting', {
+    duration: RESTART_DURATION
+  });
+  
+  // Planifier le redémarrage effectif
+  setTimeout(() => {
+    restartGame();
+  }, RESTART_DURATION);
+}
+
+// Redémarrer la partie
+function restartGame() {
+  console.log('Redémarrage de la partie...');
+  
+  // Nettoyer les bots avant de réinitialiser
+  botManager.cleanupBots();
+  
+  // Réinitialiser l'état du jeu
+  resetGameState();
+  
+  // Forcer tous les clients à rafraîchir leurs pages
+  io.emit('forceRefresh', {
+    reason: "game_restart",
+    timestamp: Date.now()
+  });
+  
+  // Informer tous les joueurs du redémarrage
+  io.emit('gameRestarted', {
+    gameState: gameState,
+    gameInfo: {
+      gameId: currentGameState.gameId,
+      startTime: currentGameState.startTime,
+      endTime: currentGameState.endTime
+    }
+  });
+  
+  // Démarrer un nouveau cycle
+  startGameCycle();
+}
+
+// Déterminer les 3 meilleurs joueurs
+function determineWinners() {
+  // Convertir l'objet joueurs en tableau
+  const playerArray = Object.values(gameState.players);
+  
+  // Trier par nombre de processeurs (ou un autre critère de score)
+  const sortedPlayers = playerArray.sort((a, b) => {
+    // Calculer le score total (somme des processeurs)
+    const scoreA = a.stats && a.stats.processorCounts ? 
+      Object.values(a.stats.processorCounts).reduce((sum, count) => sum + count, 0) : 0;
+    
+    const scoreB = b.stats && b.stats.processorCounts ? 
+      Object.values(b.stats.processorCounts).reduce((sum, count) => sum + count, 0) : 0;
+    
+    return scoreB - scoreA; // Ordre décroissant
+  });
+  
+  // Retourner les 3 premiers (ou moins s'il y a moins de 3 joueurs)
+  return sortedPlayers.slice(0, 3).map(player => ({
+    id: player.id,
+    username: player.username,
+    score: player.stats && player.stats.processorCounts ? 
+      Object.values(player.stats.processorCounts).reduce((sum, count) => sum + count, 0) : 0,
+    stats: player.stats
+  }));
+}
+  
+// Réinitialiser l'état du jeu
+function resetGameState() {
+  // Mémoriser les joueurs connectés
+  const connectedPlayers = {};
+  Object.entries(gameState.players).forEach(([id, player]) => {
+    if (!id.startsWith('bot-')) {
+      connectedPlayers[id] = {
+        username: player.username
       };
-      bot.rotation = botRotation;
-      bot.direction = {
-        x: botDirection.x,
-        y: botDirection.y,
-        z: botDirection.z
-      };
-      
-      // Informer tous les clients
-      this.io.emit('playerMoved', {
-        id: botId,
-        position: bot.position,
-        rotation: botRotation,
-        direction: bot.direction
-      });
-    });
-  }
-  
-	// Gérer le tir d'un bot avec Three.js
-	handleBotShoot(botId) {
-	  const bot = this.gameState.players[botId];
-	  if (!bot || !bot.isAlive) return;
-	  
-	  // Vérifier le cooldown de tir (un seul cooldown pour tous les canons)
-	  const currentTime = Date.now();
-	  const lastShootTime = bot.lastShootTime || 0;
-	  const attackSpeed = bot.stats?.attackSpeed || 0.5;
-	  const cooldown = 1000 / attackSpeed; // Cooldown en millisecondes
-	  
-	  if (currentTime - lastShootTime < cooldown) {
-		return; // Encore en cooldown
-	  }
-	  
-	  // Mettre à jour le dernier temps de tir
-	  bot.lastShootTime = currentTime;
-	  
-	  // Calculer l'échelle du bot
-	  let botScale = 1.0;
-	  if (bot.stats && bot.stats.processorCounts) {
-		const totalProcessors = Object.values(bot.stats.processorCounts)
-		  .reduce((sum, count) => sum + count, 0);
-		botScale = 1.0 + (totalProcessors * 0.005);
-	  }
-	  
-	  // Convertir la position et direction en objets Three.js
-	  const botPosition = new THREE.Vector3(bot.position.x, bot.position.y, bot.position.z);
-	  const botRotation = new THREE.Euler(0, bot.rotation, 0, 'XYZ');
-	  const botDirection = new THREE.Vector3(bot.direction.x, bot.direction.y, bot.direction.z);
-	  
-	  // 1. TIRER DEPUIS LE CANON PRINCIPAL
-	  this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, false, 0, 0);
-	  
-	  // 2. TIRER DEPUIS TOUS LES CANONS LATÉRAUX
-	  const sideCannonCount = this.botSideCannons[botId] || 0;
-	  
-	  // Parcourir tous les canons latéraux
-	  for (let i = 0; i < sideCannonCount; i++) {
-		// Déterminer s'il s'agit d'un canon gauche ou droit
-		const isLeftSide = i % 2 === 0;
-		const rowIndex = Math.floor(i / 2);
-		
-		// Tirer depuis ce canon latéral
-		this.fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, true, isLeftSide, rowIndex);
-	  }
-	}
+    }
+  });
 
-	// Nouvelle méthode auxiliaire pour tirer depuis un canon spécifique
-	fireFromCannon(botId, botPosition, botRotation, botDirection, botScale, isSideCannon, isLeftSide, rowIndex) {
-	  // Créer l'ID du projectile
-	  const projectileId = `projectile-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-	  
-	  // Bot réel pour récupérer les statistiques
-	  const bot = this.gameState.players[botId];
-	  
-	  // Position finale du projectile
-	  let projectilePosition = {x: 0, y: 0, z: 0};
-	  
-	  // APPROCHE TRÈS SIMPLE: utiliser directement la direction pour calculer le point de départ
-	  // Décalage en avant dans la direction du bot (pour le canon principal)
-	  const forwardDistance = 1.0 * botScale;
-	  
-	  if (isSideCannon) {
-		// Pour les canons latéraux
-		const sideOffset = (isLeftSide ? -0.3 : 0.3) * botScale;
-		const heightOffset = 1.3 * botScale; // Hauteur de la tête
-		
-		// Calcul de la position perpendiculaire à la direction
-		// Vecteur perpendiculaire à la direction (vers la gauche)
-		const perpVector = {
-		  x: -botDirection.z,
-		  y: 0,
-		  z: botDirection.x
-		};
-		
-		// Position de base: position du bot + hauteur
-		projectilePosition = {
-		  x: botPosition.x,
-		  y: botPosition.y + heightOffset,
-		  z: botPosition.z
-		};
-		
-		// Ajouter le décalage latéral (gauche/droite)
-		projectilePosition.x += perpVector.x * sideOffset;
-		projectilePosition.z += perpVector.z * sideOffset;
-		
-		// Ajouter le décalage avant (dans la direction)
-		projectilePosition.x += botDirection.x * forwardDistance;
-		projectilePosition.z += botDirection.z * forwardDistance;
-	  } else {
-		// Canon principal: décalage direct dans la direction du bot
-		const heightOffset = 1.3 * botScale; // Hauteur de la tête
-		
-		projectilePosition = {
-		  x: botPosition.x + (botDirection.x * forwardDistance),
-		  y: botPosition.y + heightOffset,
-		  z: botPosition.z + (botDirection.z * forwardDistance)
-		};
-	  }
-	  
-	  // AJOUT: Log de débogage pour vérifier la position du projectile
-	  console.log(`Bot projectile position: (${projectilePosition.x.toFixed(2)}, ${projectilePosition.y.toFixed(2)}, ${projectilePosition.z.toFixed(2)})`);
-	  console.log(`Bot position: (${botPosition.x.toFixed(2)}, ${botPosition.y.toFixed(2)}, ${botPosition.z.toFixed(2)})`);
-	  console.log(`Direction: (${botDirection.x.toFixed(2)}, ${botDirection.y.toFixed(2)}, ${botDirection.z.toFixed(2)})`);
-	  
-	  const currentTime = Date.now();
-	  
-	  // Ajouter le projectile à l'état du jeu
-	  this.gameState.projectiles[projectileId] = {
-		id: projectileId,
-		ownerId: botId,
-		position: {
-		  x: projectilePosition.x,
-		  y: projectilePosition.y,
-		  z: projectilePosition.z
-		},
-		direction: {
-		  x: botDirection.x,
-		  y: botDirection.y,
-		  z: botDirection.z
-		},
-		damage: bot.stats?.attack || 10,
-		range: bot.stats?.range || 10,
-		createdAt: currentTime
-	  };
-	  
-	  // Informer tous les clients du nouveau projectile
-	  this.io.emit('projectileCreated', {
-		id: projectileId,
-		ownerId: botId,
-		position: {
-		  x: projectilePosition.x,
-		  y: projectilePosition.y,
-		  z: projectilePosition.z
-		},
-		direction: {
-		  x: botDirection.x,
-		  y: botDirection.y,
-		  z: botDirection.z
-		},
-		damage: bot.stats?.attack || 10,
-		range: bot.stats?.range || 10
-	  });
-	}
-  // Vérifier si des bots sont bloqués
-  checkForStuckBots() {
-    Object.keys(this.botInstances).forEach(botId => {
-      const bot = this.gameState.players[botId];
-      if (!bot || !bot.isAlive) return;
-      
-      // Vérifier si le bot a bougé depuis la dernière mise à jour
-      if (this.lastPositions[botId]) {
-        const lastPos = this.lastPositions[botId];
-        const currentPos = bot.position;
-        
-        // Utiliser Three.js pour calculer la distance
-        const lastVector = new THREE.Vector3(lastPos.x, lastPos.y, lastPos.z);
-        const currentVector = new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z);
-        
-        const distance = lastVector.distanceTo(currentVector);
-        
-        // Si la distance est très petite, le bot est peut-être bloqué
-        if (distance < 0.01) {
-          this.stuckCounters[botId]++;
-          
-          // Si le bot est bloqué depuis trop longtemps, forcer un mouvement aléatoire
-          if (this.stuckCounters[botId] > 100) {
-            console.log(`Bot ${botId} semble bloqué, application d'un mouvement aléatoire`);
-            this.applyRandomMovement(botId);
-            this.stuckCounters[botId] = 0;
-          }
-        } else {
-          // Réinitialiser le compteur s'il a bougé
-          this.stuckCounters[botId] = 0;
-        }
-      }
-      
-      // Stocker la position actuelle pour la prochaine vérification
-      this.lastPositions[botId] = {...bot.position};
-    });
+  // Réinitialiser l'état du jeu
+  gameState.players = {};
+  gameState.processors = {};
+  gameState.cannons = {};
+  gameState.projectiles = {};
+  
+  // Régénérer les structures
+  gameState.structures = {};
+  generateStaticStructures();
+  
+  // Réinitialiser les joueurs avec leur position et stats par défaut
+  Object.keys(connectedPlayers).forEach(playerId => {
+    gameState.players[playerId] = {
+      id: playerId,
+      position: generateRandomPosition(),
+      rotation: Math.random() * Math.PI * 2,
+      direction: { x: 0, y: 0, z: -1 },
+      stats: getDefaultPlayerStats(),
+      hp: 100,
+      maxHp: 100,
+      isAlive: true,
+      username: connectedPlayers[playerId].username
+    };
+  });
+  
+  // Mise à jour de l'état de la partie actuelle
+  currentGameState = {
+    state: GameState.PLAYING,
+    startTime: null, // Les temps seront définis dans startGameCycle()
+    endTime: null,   // Les temps seront définis dans startGameCycle()
+    winners: [],
+    gameId: generateGameId()
+  };
+  
+  // Réinitialiser les compteurs d'IDs
+  processorId = 0;
+  cannonId = 0;
+  projectileId = 0;
+}
+
+// Fonction utilitaire pour générer une position aléatoire sur la carte
+function generateRandomPosition() {
+  // Générer une position aléatoire dans une zone annulaire entre 90% et 95% du rayon
+  const angle = Math.random() * Math.PI * 2;
+  const minRadius = MAP_BOUNDS.radius * 0.90; // 90% du rayon
+  const maxRadius = MAP_BOUNDS.radius * 0.95; // 95% du rayon
+  const radius = minRadius + Math.random() * (maxRadius - minRadius);
+  
+  return {
+    x: Math.cos(angle) * radius,
+    y: 0,  // Hauteur fixe
+    z: Math.sin(angle) * radius
+  };
+}
+
+// GÉNÉRATION DES STRUCTURES ET OBJETS
+// -----------------------------------
+
+// Fonction pour générer les structures une seule fois au démarrage du serveur
+function generateStaticStructures() {
+  // Créer le château d'eau
+  const waterTowerId = 'water-tower-1';
+  gameState.structures[waterTowerId] = {
+    id: waterTowerId,
+    type: 'waterTower',
+    position: {x: 0, y: 0, z: 0}
+  };
+  
+  // Créer les arbres
+  const treeCount = 100;
+  for (let i = 0; i < treeCount; i++) {
+    let x, z;
+	do {
+		// Générer une position aléatoire dans un cercle de 80% du rayon de la carte
+		const angle = Math.random() * Math.PI * 2; // Angle aléatoire entre 0 et 2π
+		const mapRadius = MAP_BOUNDS.radius; // Rayon total de la carte
+		const maxTreeRadius = mapRadius * 0.8; // 80% du rayon de la carte
+		const radius = Math.random() * maxTreeRadius; // Rayon aléatoire entre 0 et 80% du rayon
+
+		x = Math.cos(angle) * radius;
+		z = Math.sin(angle) * radius;
+	} while (Math.sqrt(x*x + z*z) < 25); // Éviter le centre
+    const treeId = `tree-${i}`;
+    gameState.structures[treeId] = {
+      id: treeId,
+      type: 'tree',
+      position: {x, y: 0, z},
+      hp: 150,
+      maxHp: 150
+    };
   }
   
-  // Appliquer un mouvement aléatoire à un bot bloqué
-  applyRandomMovement(botId) {
-    const bot = this.gameState.players[botId];
-    if (!bot) return;
+  console.log(`Structures statiques générées: ${Object.keys(gameState.structures).length}`);
+}
+
+// Fonction pour créer périodiquement des processeurs
+function spawnProcessors() {
+  // Ne pas spawner de nouveaux processeurs pendant le podium ou le redémarrage
+  if (currentGameState.state !== GameState.PLAYING) return;
+  
+  // Limite plus raisonnable pour la performance
+  const PROCESSOR_LIMIT = 10000;
+
+  // Types de processeurs
+  const processorTypes = [
+    'hp', 'resistance', 'attack', 'attackSpeed', 
+    'range', 'speed', 'repairSpeed'
+  ];
+  
+  // Limiter le nombre de processeurs présents dans le jeu
+  if (Object.keys(gameState.processors).length < PROCESSOR_LIMIT) {
+    const type = processorTypes[Math.floor(Math.random() * processorTypes.length)];
+    const id = `processor-${processorId++}`;
     
-    // Générer une nouvelle direction aléatoire avec Three.js
-    const randomAngle = Math.random() * Math.PI * 2;
-    const newDirection = new THREE.Vector3(
-      Math.sin(randomAngle),
-      0,
-      Math.cos(randomAngle)
-    );
-    
-    // Appliquer la nouvelle direction et rotation
-    bot.rotation = randomAngle;
-    bot.direction = {
-      x: newDirection.x,
-      y: newDirection.y,
-      z: newDirection.z
+	// Position aléatoire dans 90% du rayon de la carte autour du château d'eau
+	const angle = Math.random() * Math.PI * 2;
+	const mapRadius = MAP_BOUNDS.radius; // Rayon total de la carte
+	const maxSpawnRadius = mapRadius * 0.9; // 90% du rayon
+	const radius = Math.random() * maxSpawnRadius;
+	const x = Math.cos(angle) * radius;
+	const z = Math.sin(angle) * radius;
+	const y = 0.5; // Hauteur augmentée pour meilleure visibilité
+	
+    // Valeurs de boost
+    const boostValues = {
+      hp: 1,
+      resistance: 1,
+      attack: 1,
+      attackSpeed: 0.02,
+      range: 1,
+      speed: 0.002,
+      repairSpeed: 0.05
     };
     
-    // Forcer un mouvement dans cette direction (vitesse boostée pour s'échapper)
-    const botSpeed = bot.stats?.speed || 0.02;
-    const moveVector = newDirection.clone().multiplyScalar(botSpeed * 10);
+    gameState.processors[id] = {
+      id,
+      type,
+      position: { x, y, z },
+      boost: boostValues[type]
+    };
     
-    bot.position.x += moveVector.x;
-    bot.position.z += moveVector.z;
-    
-    // Informer les clients
-    this.io.emit('playerMoved', {
-      id: botId,
-      position: bot.position,
-      rotation: bot.rotation,
-      direction: bot.direction
-    });
-  }
-  
-  // Notifier les bots des événements du jeu
-  notifyBots(event, data) {
-    // Pour chaque bot concerné par l'événement
-    const botId = event === 'playerKilled' || event === 'playerDamaged' ? data.id : null;
-    
-    if (botId && this.botInstances[botId]) {
-      // Notifier le bot spécifique
-      if (this.botInstances[botId].handleEvent) {
-        this.botInstances[botId].handleEvent(event, data);
-      }
-    } else {
-      // Événement global, notifier tous les bots
-      Object.entries(this.botInstances).forEach(([id, bot]) => {
-        if (bot.handleEvent) {
-          bot.handleEvent(event, data);
-        }
-      });
-    }
-  }
-  
-  cleanupBots() {
-    // Arrêter l'intervalle de vérification de collecte
-    if (this.collectionCheckInterval) {
-      clearInterval(this.collectionCheckInterval);
-      this.collectionCheckInterval = null;
-    }
-    
-    // Supprimer les bots de l'état du jeu
-    Object.keys(this.botInstances).forEach(botId => {
-      delete this.gameState.players[botId];
-      delete this.lastPositions[botId];
-      delete this.stuckCounters[botId];
-      delete this.botInputs[botId];
-      delete this.botSideCannons[botId];
-    });
-    
-    // Réinitialiser la liste des bots
-    this.botInstances = {};
-    
-    console.log("Tous les bots ont été nettoyés");
+    // Diffuser l'information du nouveau processeur à tous les joueurs
+    io.emit('processorCreated', gameState.processors[id]);
   }
 }
 
-module.exports = BotManager;
+// Fonction pour créer périodiquement des canons
+function spawnCannons() {
+  // Ne pas spawner de nouveaux canons pendant le podium ou le redémarrage
+  if (currentGameState.state !== GameState.PLAYING) return;
+
+  // Limiter le nombre de canons présents dans le jeu
+  if (Object.keys(gameState.cannons).length < 50) {
+    const id = `cannon-${cannonId++}`;
+    
+    // Position aléatoire autour du château d'eau
+	let x, z;
+	const waterTowerPosition = {x: 0, y: 0, z: 0}; // Position du château d'eau au centre
+	const minDistance = 5; // Distance minimale du château d'eau
+	const maxDistance = 25; // Rayon maximal d'apparition
+
+	do {
+	  // Générer une position dans un cercle
+	  const angle = Math.random() * Math.PI * 2;
+	  const radius = minDistance + Math.random() * (maxDistance - minDistance);
+	  x = waterTowerPosition.x + Math.cos(angle) * radius;
+	  z = waterTowerPosition.z + Math.sin(angle) * radius;
+	} while (!isValidPosition({x, y: 0.5, z})); // Vérifier que la position est valide
+
+	const y = 0.5; // Hauteur augmentée pour meilleure visibilité
+    
+    gameState.cannons[id] = {
+      id,
+      position: { x, y, z }
+    };
+    
+    // Diffuser l'information du nouveau canon à tous les joueurs
+    io.emit('cannonCreated', gameState.cannons[id]);
+  }
+}
+
+// Fonction pour gérer les processeurs largués par un joueur mort
+function spawnDroppedProcessors(playerId, position) {
+  if (!gameState.players[playerId] || !isValidPosition(position)) return;
+  
+  // Pour chaque type de processeur possédé par le joueur
+  const playerStats = gameState.players[playerId].stats;
+  if (!playerStats || !playerStats.processorCounts) return;
+  
+  const processorCounts = playerStats.processorCounts;
+  
+  // Valeurs de boost
+  const boostValues = {
+    hp: 1,
+    resistance: 1,
+    attack: 1,
+    attackSpeed: 0.02,
+    range: 1,
+    speed: 0.002,
+    repairSpeed: 0.05
+  };
+  
+  Object.entries(processorCounts).forEach(([type, count]) => {
+    // Calculer combien de processeurs vont tomber (1/2 des processeurs)
+    const dropCount = Math.floor(count / 2);
+    
+    if (dropCount <= 0) return;
+    
+    // Créer les processeurs
+    for (let i = 0; i < dropCount; i++) {
+      const id = `processor-${processorId++}`;
+      
+      // Position aléatoire autour du joueur mort
+      const randomOffset = {
+        x: (Math.random() - 0.5) * 2,
+        y: 0.2,
+        z: (Math.random() - 0.5) * 2
+      };
+      
+      const processorPosition = {
+        x: position.x + randomOffset.x,
+        y: 0 + randomOffset.y,
+        z: position.z + randomOffset.z
+      };
+      
+      // Vérifier que la position est valide
+      if (!isValidPosition(processorPosition)) continue;
+      
+      gameState.processors[id] = {
+        id,
+        type,
+        position: processorPosition,
+        boost: boostValues[type],
+      };
+      
+      // Diffuser l'information du nouveau processeur à tous les joueurs
+      io.emit('processorCreated', gameState.processors[id]);
+    }
+  });
+}
+
+// GESTION DES CONNEXIONS ET ÉVÉNEMENTS
+// -----------------------------------
+
+// Fonction pour traiter les joueurs qui rejoignent
+function handlePlayerJoin(socket, playerData) {
+  // Validation des données du joueur
+  if (!playerData || typeof playerData !== 'object') {
+    console.log("Données de joueur invalides:", playerData);
+    return;
+  }
+  
+  // Vérifier la position
+  const position = isValidPosition(playerData.position) 
+    ? playerData.position 
+    : generateRandomPosition();
+  
+  // Valider les autres champs
+  const username = playerData.username || `Robot-${socket.id.substr(0, 4)}`;
+  const stats = validatePlayerStats(playerData.stats);
+  const hp = validateNumber(playerData.hp, 1, 1000, 100);
+  const maxHp = validateNumber(playerData.maxHp, 1, 1000, 100);
+  
+  // Ajouter le joueur à l'état du jeu
+  gameState.players[socket.id] = {
+    id: socket.id,
+    position: position,
+    rotation: playerData.rotation || 0,
+    direction: playerData.direction || { x: 0, y: 0, z: -1 },
+    stats: stats,
+    hp: hp,
+    maxHp: maxHp,
+    isAlive: true,
+    username: username
+  };
+  
+  // Informer tous les autres joueurs du nouveau venu
+  socket.broadcast.emit('playerJoined', {
+    id: socket.id,
+    ...gameState.players[socket.id]
+  });
+  
+  // Envoyer la liste complète des joueurs au nouveau joueur
+  socket.emit('playerList', gameState.players);
+  
+  console.log(`Joueur ${username} (${socket.id}) a rejoint la partie`);
+}
+
+function handlePlayerUpdate(socket, playerData) {
+  if (!gameState.players[socket.id]) return;
+  
+  // Vérifier si la position est valide
+  if (playerData.position && !isValidPosition(playerData.position)) {
+    console.log(`Position invalide reçue de ${socket.id}:`, playerData.position);
+    socket.emit('positionReset', gameState.players[socket.id].position);
+    return;
+  }
+  
+  // Vérifier si le déplacement est réaliste (pas de téléportation)
+  if (playerData.position && gameState.players[socket.id].position) {
+    const lastPos = gameState.players[socket.id].position;
+    const distance = calculateDistance(playerData.position, lastPos);
+    
+    // Calculer la distance maximale possible basée sur la vitesse
+    const playerSpeed = gameState.players[socket.id].stats?.speed || 0.02;
+    const maxDistance = playerSpeed * 60; // Valeur arbitraire à ajuster
+    
+    if (distance > maxDistance) {
+      console.log(`Mouvement suspect de ${socket.id}: ${distance.toFixed(2)} unités (max ${maxDistance.toFixed(2)})`);
+      socket.emit('positionReset', lastPos);
+      return;
+    }
+  }
+  
+  // Valider les autres champs avant de mettre à jour
+  const validatedUpdate = {};
+  
+  if (playerData.position) validatedUpdate.position = playerData.position;
+  if (typeof playerData.rotation === 'number') validatedUpdate.rotation = playerData.rotation;
+  if (playerData.direction) validatedUpdate.direction = playerData.direction;
+  if (typeof playerData.isAlive === 'boolean') validatedUpdate.isAlive = playerData.isAlive;
+  if (typeof playerData.hp === 'number') {
+    validatedUpdate.hp = validateNumber(
+      playerData.hp, 
+      0, 
+      gameState.players[socket.id].maxHp, 
+      gameState.players[socket.id].hp
+    );
+  }
+  
+  // Si tout est OK, mettre à jour
+  gameState.players[socket.id] = {
+    ...gameState.players[socket.id],
+    ...validatedUpdate
+  };
+  
+  // Diffuser la mise à jour aux autres joueurs
+  socket.broadcast.emit('playerMoved', {
+    id: socket.id,
+    ...validatedUpdate
+  });
+}
+
+function handlePlayerShoot(socket, projectileData) {
+  // Validation des données
+  if (!projectileData || !isValidPosition(projectileData.position) || !projectileData.direction) {
+    console.log("Données de projectile invalides:", projectileData);
+    return;
+  }
+  
+  // Vérifier si le joueur existe et est vivant
+  if (!gameState.players[socket.id] || !gameState.players[socket.id].isAlive) {
+    console.log(`Tentative de tir par un joueur mort ou inexistant: ${socket.id}`);
+    return;
+  }
+  
+  // Vérifier si le tir provient bien de la position du joueur
+  const playerPos = gameState.players[socket.id].position;
+  const distance = calculateDistance(playerPos, projectileData.position);
+  
+  if (distance > 5) { // 5 unités = distance raisonnable pour le canon
+    console.log(`Position de tir suspecte: ${distance.toFixed(2)} unités de distance`);
+    return;
+  }
+  
+  // Normaliser la direction
+  const direction = projectileData.direction;
+  const magnitude = Math.sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+  if (magnitude === 0) {
+    console.log("Direction de projectile invalide (magnitude 0)");
+    return;
+  }
+  
+  const normalizedDirection = {
+    x: direction.x / magnitude,
+    y: direction.y / magnitude,
+    z: direction.z / magnitude
+  };
+  
+  // Limiter les valeurs de dégâts et portée aux stats du joueur
+  const playerStats = gameState.players[socket.id].stats;
+  const damage = playerStats ? playerStats.attack : 10;
+  const range = playerStats ? playerStats.range : 10;
+  
+  // Utiliser l'ID fourni par le client s'il existe, sinon en générer un
+  const id = projectileData.projectileId || `projectile-${projectileId++}`;
+  
+  // Stocker la référence au projectile dans gameState
+  gameState.projectiles[id] = {
+    id,
+    ownerId: socket.id,
+    position: projectileData.position,
+    direction: normalizedDirection,
+    damage: damage,
+    range: range,
+    createdAt: Date.now()
+  };
+  
+  // Diffuser l'information du tir à tous les joueurs
+  io.emit('projectileCreated', {
+    id,
+    ownerId: socket.id,
+    position: projectileData.position,
+    direction: normalizedDirection,
+    damage: damage,
+    range: range
+  });
+}
+
+function handleProcessorCollected(socket, data) {
+  // Validation de base
+  if (!data || !data.processorId) {
+    console.log("Données de processeur incomplètes");
+    return;
+  }
+
+  // Vérifier que le processeur existe
+  if (!gameState.processors[data.processorId]) {
+    console.log(`Processeur inexistant ou déjà collecté: ${data.processorId}`);
+
+    // Envoyer une mise à jour de synchronisation au joueur
+    socket.emit('syncGameState', {
+      processors: Object.keys(gameState.processors),
+      players: { [socket.id]: gameState.players[socket.id] }
+    });
+    return;
+  }
+  
+  // Vérifier que le joueur existe
+  if (!gameState.players[socket.id]) {
+    console.log(`Joueur inexistant pour collecte: ${socket.id}`);
+    return;
+  }
+  
+  // Vérifier la distance entre le joueur et le processeur
+  const distance = calculateDistance(
+    gameState.players[socket.id].position,
+    gameState.processors[data.processorId].position
+  );
+  
+  // Distance maximale de collecte (ajustée selon l'échelle du joueur)
+  let baseCollectDistance = 2;
+  // Si le joueur a des stats, on peut ajuster en fonction de son échelle approximative
+  if (gameState.players[socket.id].stats && gameState.players[socket.id].stats.processorCounts) {
+    const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts)
+      .reduce((sum, count) => sum + count, 0);
+    // Augmenter la distance de collecte de 0.5% par processeur collecté
+    baseCollectDistance *= (1 + (totalProcessors * 0.005));
+  }
+  
+  if (distance > baseCollectDistance) {
+    console.log(`Distance de collecte suspecte: ${distance.toFixed(2)} > ${baseCollectDistance.toFixed(2)}`);
+    return;
+  }
+  
+  // Si toutes les vérifications passent, poursuivre avec la collecte
+  const processor = gameState.processors[data.processorId];
+  const processorType = processor.type;
+  const boostValue = processor.boost;
+  
+  // Supprimer le processeur de l'état du jeu
+  delete gameState.processors[data.processorId];
+  
+  // Diffuser l'information à tous les joueurs
+  io.emit('processorRemoved', {
+    id: data.processorId
+  });
+  
+  // Mettre à jour les statistiques du joueur
+  if (!gameState.players[socket.id].stats) {
+    gameState.players[socket.id].stats = getDefaultPlayerStats();
+  }
+  
+  if (!gameState.players[socket.id].stats.processorCounts) {
+    gameState.players[socket.id].stats.processorCounts = {
+      hp: 0, resistance: 0, attack: 0, attackSpeed: 0, 
+      range: 0, speed: 0, repairSpeed: 0
+    };
+  }
+  
+  // Mettre à jour la statistique correspondante
+  switch(processorType) {
+    case 'hp':
+      gameState.players[socket.id].maxHp += boostValue;
+      gameState.players[socket.id].hp += boostValue;
+      break;
+    case 'resistance':
+    case 'attack':
+    case 'attackSpeed':
+    case 'range':
+    case 'speed':
+    case 'repairSpeed':
+      gameState.players[socket.id].stats[processorType] += boostValue;
+      break;
+  }
+  
+  // Incrémenter le compteur de processeurs
+  gameState.players[socket.id].stats.processorCounts[processorType]++;
+    
+  // Calculer le total des processeurs
+  const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts).reduce((sum, count) => sum + count, 0);
+  
+  // Diffuser la mise à jour des statistiques
+  io.emit('playerStatsUpdated', {
+    id: socket.id,
+    stats: gameState.players[socket.id].stats,
+    hp: gameState.players[socket.id].hp,
+    maxHp: gameState.players[socket.id].maxHp,
+    totalProcessors: totalProcessors
+  });
+  
+  // Notification aux bots de la collecte
+  botManager.notifyBots('processorCollected', {
+    id: data.processorId,
+    type: processorType,
+    playerId: socket.id
+  });
+}
+
+function handleCannonCollected(socket, data) {
+  // Validation de base
+  if (!data || !data.cannonId) {
+    console.log("Données de canon incomplètes");
+    return;
+  }
+  
+  // Vérifier que le canon existe
+  if (!gameState.cannons[data.cannonId]) {
+    console.log(`Canon inexistant: ${data.cannonId}`);
+    return;
+  }
+  
+  // Vérifier que le joueur existe
+  if (!gameState.players[socket.id]) {
+    console.log(`Joueur inexistant pour collecte: ${socket.id}`);
+    return;
+  }
+  
+  // Vérifier la distance entre le joueur et le canon
+  const distance = calculateDistance(
+    gameState.players[socket.id].position,
+    gameState.cannons[data.cannonId].position
+  );
+  
+  // Distance maximale de collecte (ajustée selon l'échelle du joueur)
+  let baseCollectDistance = 2;
+  if (gameState.players[socket.id].stats && gameState.players[socket.id].stats.processorCounts) {
+    const totalProcessors = Object.values(gameState.players[socket.id].stats.processorCounts)
+      .reduce((sum, count) => sum + count, 0);
+    baseCollectDistance *= (1 + (totalProcessors * 0.005));
+  }
+  
+  if (distance > baseCollectDistance) {
+    console.log(`Distance de collecte de canon suspecte: ${distance.toFixed(2)} > ${baseCollectDistance.toFixed(2)}`);
+    return;
+  }
+  
+  // Supprimer le canon de l'état du jeu
+  delete gameState.cannons[data.cannonId];
+  
+  // Diffuser l'information à tous les joueurs
+  io.emit('cannonRemoved', {
+    id: data.cannonId
+  });
+  
+  // Notification aux bots
+  botManager.notifyBots('cannonCollected', {
+    id: data.cannonId,
+    playerId: socket.id
+  });
+}
+
+// Gérer les connexions WebSocket
+io.on('connection', (socket) => {
+  console.log(`Nouveau joueur connecté: ${socket.id}`);
+  
+  // Envoyer l'état actuel du jeu et les informations de la partie au nouveau joueur
+  socket.emit('gameState', {
+	...gameState,
+	gameInfo: {
+		state: currentGameState.state,
+		gameId: currentGameState.gameId,
+		startTime: currentGameState.startTime,
+		endTime: currentGameState.endTime,
+		currentTime: Date.now() // Ajouter l'heure actuelle du serveur pour référence
+	}
+  });
+  
+  // Si la partie est en mode podium, envoyer aussi les gagnants
+  if (currentGameState.state === GameState.PODIUM) {
+    socket.emit('gameEnded', {
+      winners: currentGameState.winners,
+      duration: currentGameState.endTime - Date.now()
+    });
+  }
+  
+  // Traiter la création d'un nouveau joueur
+	socket.on('playerJoin', (playerData) => {
+	  handlePlayerJoin(socket, playerData);
+	  
+	  // Réenvoyer les informations de collider pour tous les bots existants au nouveau joueur
+	  Object.keys(gameState.players).forEach(playerId => {
+		if (playerId.startsWith('bot-')) {
+		  botManager.addBotToCollisionSystem(playerId);
+		}
+	  });
+	});
+	
+  // Gérer les dégâts aux structures
+  socket.on('structureDamaged', (data) => {
+    // Validation des données
+    if (!data || !data.structureId || typeof data.damage !== 'number' || !isValidPosition(data.position)) {
+      console.log("Données de structure invalides:", data);
+      return;
+    }
+    
+    if (gameState.structures[data.structureId]) {
+      // Vérifier si le joueur est à portée raisonnable de la structure
+      const structure = gameState.structures[data.structureId];
+      const playerPosition = gameState.players[socket.id]?.position;
+      
+      if (playerPosition) {
+        const distance = calculateDistance(playerPosition, structure.position);
+        const MAX_STRUCTURE_ATTACK_RANGE = 50; // Distance maximale pour pouvoir attaquer une structure
+        
+        if (distance > MAX_STRUCTURE_ATTACK_RANGE) {
+          console.log(`Tentative d'attaque de structure trop éloignée: ${distance.toFixed(2)} > ${MAX_STRUCTURE_ATTACK_RANGE}`);
+          return;
+        }
+      }
+      
+      // Valider et limiter les dégâts
+      const damage = Math.min(Math.max(1, data.damage), 50);
+      
+      // Appliquer les dégâts
+      if (!structure.hp) structure.hp = 150; // Valeur par défaut si non définie
+      if (!structure.maxHp) structure.maxHp = 150;
+      
+      structure.hp -= damage;
+      
+      // Vérifier si la structure est détruite
+      if (structure.hp <= 0) {
+        structure.hp = 0;
+        structure.destroyed = true;
+        
+        // Informer tous les joueurs
+        io.emit('structureDestroyed', {
+          id: data.structureId,
+          position: structure.position
+        });
+        
+        // Notification aux bots
+        botManager.notifyBots('structureDestroyed', {
+          id: data.structureId,
+          position: structure.position
+        });
+      } else {
+        // Informer tous les joueurs des dégâts
+        io.emit('structureDamaged', {
+          id: data.structureId,
+          damage: damage,
+          hp: structure.hp
+        });
+        
+        // Notification aux bots
+        botManager.notifyBots('structureDamaged', {
+          id: data.structureId,
+          damage: damage,
+          hp: structure.hp
+        });
+      }
+    }
+  });  
+  
+  // Mettre à jour la position du joueur
+  socket.on('playerUpdate', (playerData) => {
+    handlePlayerUpdate(socket, playerData);
+  });
+  
+  // Gérer le tir
+  socket.on('playerShoot', (projectileData) => {
+    handlePlayerShoot(socket, projectileData);
+  });
+  
+  // Gérer l'impact des projectiles
+  socket.on('projectileHit', (data) => {
+    // Validation de base
+    if (!data.targetId || !isValidPosition(data.position)) {
+      console.log("Données d'impact incomplètes ou invalides", data);
+      return;
+    }
+    
+    // Deux modes de validation : par ID direct ou par propriétaire/position
+    let projectile = null;
+    
+    // Mode 1: Validation par ID (ancien système)
+    if (data.projectileId && gameState.projectiles[data.projectileId]) {
+      projectile = gameState.projectiles[data.projectileId];
+    } 
+    // Mode 2: Validation par propriétaire et position (nouveau système)
+    else if (data.ownerId && data.position) {
+      // Rechercher le projectile le plus probable (appartenant à ce joueur et proche de la position d'impact)
+      const potentialProjectiles = Object.values(gameState.projectiles).filter(p => 
+        p.ownerId === socket.id && 
+        calculateDistance(p.position, data.position) < p.range * 0.5  // 50% de la portée pour la marge
+      );
+      
+      // Si des projectiles potentiels sont trouvés, prendre le plus proche
+      if (potentialProjectiles.length > 0) {
+        projectile = potentialProjectiles.sort((a, b) => 
+          calculateDistance(a.position, data.position) - calculateDistance(b.position, data.position)
+        )[0];
+      }
+    }
+    
+    // Si aucun projectile n'est trouvé, utiliser un mode de validation simplifié
+    if (!projectile) {
+      console.log(`Projectile non trouvé, utilisation du mode de validation simplifié pour ${socket.id}`);
+      
+      // Vérifier que le joueur tire et que la cible existe
+      if (!gameState.players[socket.id]) {
+        console.log(`Tireur inexistant: ${socket.id}`);
+        return;
+      }
+      
+      if (data.targetType === 'player' && !gameState.players[data.targetId]) {
+        console.log(`Impact avec joueur inexistant: ${data.targetId}`);
+        return;
+      }
+      
+      // Vérifier que le joueur ne triche pas en attaquant des cibles trop loin
+      if (data.targetType === 'player') {
+        const attackerPos = gameState.players[socket.id].position;
+        const targetPos = gameState.players[data.targetId].position;
+        const distance = calculateDistance(attackerPos, targetPos);
+        const maxRange = gameState.players[socket.id].stats?.range || 10;
+        
+        if (distance > maxRange * 1.2) { // 20% de marge
+          console.log(`Attaque à distance suspecte: ${distance.toFixed(2)} > ${maxRange}`);
+          return;
+        }
+        
+        // Créer un "faux" projectile pour le traitement
+        projectile = {
+          ownerId: socket.id,
+          damage: gameState.players[socket.id].stats?.attack || 10
+        };
+      } else {
+        return; // Abandonner si pas de joueur ciblé dans le mode simplifié
+      }
+    } else {
+      // Pour les projectiles identifiés normalement, vérifier que le tireur est bien le propriétaire
+      if (projectile.ownerId !== socket.id) {
+        console.log(`Tentative d'usurpation de projectile: ${socket.id} pour ${projectile.ownerId}`);
+        return;
+      }
+      
+      // Vérifier le temps de vie du projectile
+      const projectileAge = Date.now() - projectile.createdAt;
+      const maxLifetime = 5000; // 5 secondes max
+      
+      if (projectileAge > maxLifetime) {
+        console.log(`Projectile trop ancien: ${projectileAge}ms`);
+        if (projectile.id) delete gameState.projectiles[projectile.id];
+        return;
+      }
+      
+      // Vérifier la distance d'impact
+      if (projectile.position) {
+        const distanceFromStart = calculateDistance(projectile.position, data.position);
+        if (distanceFromStart > projectile.range * 1.1) { // 10% de marge d'erreur
+          console.log(`Distance d'impact suspecte: ${distanceFromStart.toFixed(2)} > ${projectile.range}`);
+          return;
+        }
+      }
+    }
+    
+    // Vérification spécifique pour une cible joueur
+    if (data.targetType === 'player' && data.targetId) {
+      const targetPosition = gameState.players[data.targetId].position;
+      const targetDistance = calculateDistance(data.position, targetPosition);
+      
+      // 3 unités = rayon de collision raisonnable (ajustement selon échelle du joueur)
+      let collisionRadius = 3;
+      
+      // Ajuster le rayon de collision en fonction de la taille du joueur
+      if (gameState.players[data.targetId].stats && gameState.players[data.targetId].stats.processorCounts) {
+        const totalProcessors = Object.values(gameState.players[data.targetId].stats.processorCounts)
+          .reduce((sum, count) => sum + count, 0);
+        // Augmenter le rayon de 0.5% par processeur
+        collisionRadius *= (1 + (totalProcessors * 0.005));
+      }
+      
+      if (targetDistance > collisionRadius) {
+        console.log(`Cible trop éloignée de l'impact: ${targetDistance.toFixed(2)} > ${collisionRadius}`);
+        return;
+      }
+    }
+    
+    // Si toutes les vérifications passent, traiter l'impact
+    if (projectile.id) delete gameState.projectiles[projectile.id];
+    
+    if (data.targetType === 'player' && gameState.players[data.targetId]) {
+      // Calculer les dégâts en tenant compte de la résistance
+      const rawDamage = projectile.damage || data.damage || 10;
+      const resistance = gameState.players[data.targetId].stats?.resistance || 10;
+      const reductionRatio = 1 - 1/(1 + resistance/100);
+      const damage = Math.max(1, Math.round(rawDamage * (1 - reductionRatio)));
+      
+      // Appliquer les dégâts
+      gameState.players[data.targetId].hp -= damage;
+      
+      // Vérifier si le joueur est mort
+      if (gameState.players[data.targetId].hp <= 0) {
+        gameState.players[data.targetId].hp = 0;
+        gameState.players[data.targetId].isAlive = false;
+        
+        // Diffuser l'événement de mort du joueur
+        io.emit('playerKilled', {
+          id: data.targetId,
+          killerId: socket.id
+        });
+        
+        // Notification aux bots
+        botManager.notifyBots('playerKilled', {
+          id: data.targetId,
+          killerId: socket.id
+        });
+        
+        // Créer les processeurs largués
+        spawnDroppedProcessors(data.targetId, data.position);
+      }
+      
+      // Diffuser l'information des dégâts à tous les joueurs
+      io.emit('playerDamaged', {
+        id: data.targetId,
+        damage: damage,
+        hp: gameState.players[data.targetId].hp
+      });
+      
+      // Notification aux bots
+      botManager.notifyBots('playerDamaged', {
+        id: data.targetId,
+        damage: damage,
+        hp: gameState.players[data.targetId].hp
+      });
+    }
+    
+    // Diffuser l'information de l'impact à tous les joueurs
+    io.emit('projectileDestroyed', {
+      id: data.projectileId || `temp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      position: data.position
+    });
+  });
+ 
+  // Gérer la collecte de processeurs
+  socket.on('processorCollected', (data) => {
+    handleProcessorCollected(socket, data);
+  });
+  
+  // Nouvel événement pour la collecte de canons
+  socket.on('cannonCollected', (data) => {
+    handleCannonCollected(socket, data);
+  });
+  
+  // Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
+  socket.on('requestGameState', () => {
+    console.log(`Joueur ${socket.id} demande un rafraîchissement de l'état du jeu`);
+    
+    // Envoyer l'état actuel du jeu et les informations de la partie au joueur
+    socket.emit('gameState', {
+      players: gameState.players,
+      processors: gameState.processors,
+      cannons: gameState.cannons,
+      projectiles: gameState.projectiles,
+      structures: gameState.structures,
+      gameInfo: {
+        state: currentGameState.state,
+        gameId: currentGameState.gameId,
+        startTime: currentGameState.startTime,
+        endTime: currentGameState.endTime
+      }
+    });
+    
+    // Si la partie est en mode podium, envoyer aussi les gagnants
+    if (currentGameState.state === GameState.PODIUM) {
+      socket.emit('gameEnded', {
+        winners: currentGameState.winners,
+        duration: currentGameState.endTime - Date.now()
+      });
+    }
+  });
+  
+  // Gérer la déconnexion
+  socket.on('disconnect', () => {
+    console.log(`Joueur déconnecté: ${socket.id}`);
+    
+    // Pour l'instant, supprimer le joueur de l'état du jeu
+    if (gameState.players[socket.id]) {
+      // Vérifier si c'est un bot (mais ne pas les gérer ici, cela se fait via le botManager)
+      const isBot = socket.id.startsWith('bot-');
+      if (!isBot) {
+        delete gameState.players[socket.id];
+      }
+    }
+    
+    // Informer tous les autres joueurs de la déconnexion (uniquement pour les joueurs humains)
+    if (!socket.id.startsWith('bot-')) {
+      io.emit('playerLeft', socket.id);
+    }
+  }); 
+  
+  socket.on('requestProcessorsUpdate', () => {
+    // Envoyer la liste complète des processeurs actuels
+    socket.emit('processorsUpdate', gameState.processors);
+  });
+});
+
+// Appeler cette fonction au démarrage du serveur
+generateStaticStructures();
+
+// Démarrer les intervalles pour créer des objets
+const PROCESSOR_SPAWN_INTERVAL = 500; // 0.5 seconde
+const CANNON_SPAWN_INTERVAL = 30000; // 30 secondes
+
+setInterval(spawnProcessors, PROCESSOR_SPAWN_INTERVAL);
+setInterval(spawnCannons, CANNON_SPAWN_INTERVAL);
+
+// Démarrer le serveur
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Serveur démarré sur le port ${PORT}`);
+  // Démarrer le cycle de jeu
+  startGameCycle();
+});
