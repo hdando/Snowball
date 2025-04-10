@@ -1370,15 +1370,21 @@
 			
 			// Calculer les dimensions du collider en fonction de la structure
 			calculateColliderDimensions() {
-				// Rayon du collider exactement celui de la base
+				// Calculer la hauteur totale de la structure
+				// Base + tour + réservoir
+				const totalHeight = this.baseHeight + this.towerHeight + this.tankHeight;
+				
+				// Stocker pour utilisation dans setupCollisions
+				this.colliderHeight = totalHeight;
+				
+				// Le rayon inférieur correspond à la base du château d'eau
 				this.colliderRadiusBottom = this.baseRadius;
-				this.colliderRadiusTop = this.tankRadius; // Le cône est plus large au sommet
 				
-				// Hauteur totale (base + tour + cône)
-				this.colliderHeight = this.tankY + (this.tankHeight / 2);
+				// Le rayon supérieur correspond au réservoir d'eau (plus large)
+				this.colliderRadiusTop = this.tankRadius;
 				
-				// Position Y du collider
-				this.colliderY = this.colliderHeight / 2;
+				// Position Y du collider (doit être centré sur toute la structure)
+				this.colliderY = totalHeight / 2;
 			}
 			
 			// Créer la tour en béton
@@ -1430,17 +1436,20 @@
 			
 			// Configurer les collisions
 			setupCollisions() {
-				// Créer un collider adapté aux dimensions de la structure
+				// Créer un collider en forme de cône tronqué (pour mieux correspondre à la forme)
+				// Le haut est plus large (tankRadius) que le bas (baseRadius)
 				const colliderGeometry = new THREE.CylinderGeometry(
-					this.colliderRadiusBottom,//rayon du sommet
-					this.colliderRadiusBottom, //rayon de la base du cylindre
-					this.colliderHeight, //hauteur du cylindre
-					8	//Nombre de segments sur la circonférence
+					this.colliderRadiusTop,   // Rayon du sommet (réservoir)
+					this.colliderRadiusBottom, // Rayon de la base
+					this.colliderHeight,       // Hauteur totale
+					8                          // Nombre de segments
 				);
+				
 				const colliderMaterial = new THREE.MeshBasicMaterial({
 					transparent: true,
-					opacity: 0.0, // Invisible
-					wireframe: true
+					opacity: 0.5,            // Légèrement visible pour le débogage (0 pour production)
+					wireframe: true,         // Afficher en wireframe pour le débogage
+					color: 0xff0000          // Rouge pour le débogage
 				});
 				
 				this.colliderMesh = new THREE.Mesh(colliderGeometry, colliderMaterial);
@@ -1464,7 +1473,6 @@
 				this.collisionSystem.removeObject(this);
 			}
 		}
-
 		// Classe pour l'arbre destructible avec variables de classe
 		class Tree {
 			constructor(scene, position, collisionSystem) {
@@ -1706,7 +1714,7 @@
 				
 				const radius = this.width / 2;
 				const segments = 64;
-				const wallHeight = 15;
+				const wallHeight = 5;
 				const wallThickness = 1;
 				
 				// Créer un groupe pour contenir tous les segments de mur
