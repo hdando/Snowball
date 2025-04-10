@@ -182,7 +182,7 @@ function startGameCycle() {
   // Créer un intervalle pour les mises à jour des bots
   const botUpdateInterval = setInterval(() => {
     botManager.updateBots();
-  }, 15); // Mettre à jour les bots toutes les 15 ms
+  }, 10); // Mettre à jour les bots toutes les 10 ms
   
   // Planifier la fin de la partie en utilisant l'endTime calculé
   const timeToEnd = currentGameState.endTime - Date.now();
