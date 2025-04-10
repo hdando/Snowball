@@ -183,7 +183,7 @@
             background-color: rgba(0, 0, 0, 0.01); /* Fond semi-transparent noir */
             padding: 15px;
             border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.01);
         }
         
         /* Style pour le titre des instructions */
@@ -3723,7 +3723,7 @@
 
         // Positionnement et configuration de la caméra
         camera.position.set(0, 10000, 0); // Position la caméra en hauteur et en retrait
-        camera.lookAt(0,0,0); // Oriente la caméra vers le joueur
+        camera.lookAt(50,0,0); // Oriente la caméra vers le joueur
 
         // Gestion des touches
         const keys = { 
@@ -4647,7 +4647,6 @@
 			}
 			// Stocker l'ID du projectile venant du serveur
 			projectile.id = projectileData.id;
-			console.log(`Projectile créé: ${projectileData.id} par joueur ${projectileData.ownerId}`);
 			
 			// Ajouter à la liste des projectiles du propriétaire seulement si le propriétaire existe encore
 			if (projectileData.ownerId === socket.id) {
