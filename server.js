@@ -1173,33 +1173,49 @@ io.on('connection', (socket) => {
     handleCannonCollected(socket, data);
   });
   
-  // Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
-  socket.on('requestGameState', () => {
-    console.log(`Joueur ${socket.id} demande un rafraîchissement de l'état du jeu`);
-    
-    // Envoyer l'état actuel du jeu et les informations de la partie au joueur
-    socket.emit('gameState', {
-      players: gameState.players,
-      processors: gameState.processors,
-      cannons: gameState.cannons,
-      projectiles: gameState.projectiles,
-      structures: gameState.structures,
-      gameInfo: {
-        state: currentGameState.state,
-        gameId: currentGameState.gameId,
-        startTime: currentGameState.startTime,
-        endTime: currentGameState.endTime
-      }
-    });
-    
-    // Si la partie est en mode podium, envoyer aussi les gagnants
-    if (currentGameState.state === GameState.PODIUM) {
-      socket.emit('gameEnded', {
-        winners: currentGameState.winners,
-        duration: currentGameState.endTime - Date.now()
-      });
-    }
-  });
+    // Nouvel événement pour demander l'état du jeu (utile après une reconnexion)
+	socket.on('requestGameState', () => {
+		console.log(`Joueur ${socket.id} demande un rafraîchissement de l'état du jeu`);
+		
+		// Envoyer l'état actuel du jeu et les informations de la partie au joueur
+		socket.emit('gameState', {
+			players: gameState.players,
+			processors: gameState.processors,
+			cannons: gameState.cannons,
+			projectiles: gameState.projectiles,
+			structures: gameState.structures,
+			gameInfo: {
+				state: currentGameState.state,
+				gameId: currentGameState.gameId,
+				startTime: currentGameState.startTime,
+				endTime: currentGameState.endTime
+			}
+		});
+		
+		// Si la partie est en mode podium, envoyer aussi les gagnants
+		if (currentGameState.state === GameState.PODIUM) {
+			socket.emit('gameEnded', {
+				winners: currentGameState.winners,
+				duration: currentGameState.endTime - Date.now()
+			});
+		}
+	});
+
+	// AJOUTEZ CE CODE ICI
+	socket.on('requestBotCannonsInfo', () => {
+		console.log(`Client ${socket.id} demande des informations sur les canons des bots`);
+		
+		// Créer un objet avec les informations des canons pour chaque bot
+		const botCannonInfo = {};
+		Object.keys(botManager.botInstances).forEach(botId => {
+			botCannonInfo[botId] = {
+				sideCannonsCount: botManager.botSideCannons[botId] || 0
+			};
+		});
+		
+		// Envoyer au client demandeur uniquement
+		socket.emit('botCannonsInfo', botCannonInfo);
+	});
   
   // Gérer la déconnexion
   socket.on('disconnect', () => {
