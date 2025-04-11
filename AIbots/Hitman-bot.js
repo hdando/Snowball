@@ -12,7 +12,7 @@ class HunterBot {
     // État non persistant
     this.targetPosition = null;       // Position de la cible actuelle
     this.lastPathUpdateTime = 0;      // Dernier moment où on a mis à jour le chemin
-    this.pathUpdateInterval = 500;    // Intervalle de mise à jour du chemin en ms
+    this.pathUpdateInterval = 10;    // Intervalle de mise à jour du chemin en ms
     
     console.log(`[HunterBot ${this.id}] Initialized`);
   }
@@ -83,7 +83,6 @@ class HunterBot {
       this.targetId = this.findClosestCannon();
       if (this.targetId) {
         this.targetPosition = this.gameState.cannons[this.targetId].position;
-        console.log(`[HunterBot ${this.id}] Targeting cannon ${this.targetId}`);
       }
     } else {
       this.targetId = this.findClosestPlayer();
