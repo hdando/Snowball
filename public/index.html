@@ -1638,8 +1638,8 @@
 				
 				const radius = this.width / 2;
 				const segments = 64;
-				const wallHeight = 3;
-				const wallThickness = 1;
+				const wallHeight = 5;
+				const wallThickness = 3;
 				
 				// Créer un groupe pour contenir tous les segments de mur
 				this.borderGroup = new THREE.Group();
@@ -5141,7 +5141,7 @@
 			} else {
 				// Si le joueur n'existe pas encore ou si le jeu n'a pas commencé,
 				// on peut quand même rendre la scène avec une caméra statique
-				camera.position.set(0, 100, 0);
+				camera.position.set(0, 1000, 0);
 				camera.lookAt(0, 0, 0);
 				
 				// On peut toujours animer certains éléments de la scène pour une apparence plus vivante
