@@ -7,6 +7,7 @@ class HunterBot {
     // État interne du bot
     this.state = 'COLLECTING_CANNONS'; // Deux états: COLLECTING_CANNONS ou HUNTING_PLAYERS
     this.targetId = null;              // ID de la cible (canon ou joueur)
+    this.targetType = null;            // 'cannon', 'processor', ou 'player'
     this.collectedCannons = 0;         // Compteur de canons collectés
     
     // État non persistant
@@ -34,6 +35,7 @@ class HunterBot {
       // Transition vers l'état de chasse aux joueurs
       this.state = 'HUNTING_PLAYERS';
       this.targetId = null;
+      this.targetType = null;
       this.targetPosition = null;
       console.log(`[HunterBot ${this.id}] Switching to HUNTING_PLAYERS mode`);
     }
@@ -61,13 +63,24 @@ class HunterBot {
   // Vérifier si la cible est toujours valide et mettre à jour sa position
   isTargetValid() {
     if (this.state === 'COLLECTING_CANNONS') {
-      const cannon = this.gameState.cannons[this.targetId];
-      if (cannon) {
-        this.targetPosition = cannon.position;
-        return true;
+      if (this.targetType === 'cannon') {
+        const cannon = this.gameState.cannons[this.targetId];
+        if (cannon) {
+          this.targetPosition = cannon.position;
+          return true;
+        }
+        return false;
+      } else if (this.targetType === 'processor') {
+        const processor = this.gameState.processors[this.targetId];
+        if (processor) {
+          this.targetPosition = processor.position;
+          return true;
+        }
+        return false;
       }
       return false;
     } else {
+      // Mode HUNTING_PLAYERS
       const target = this.gameState.players[this.targetId];
       if (target && target.isAlive && this.targetId !== this.id) {
         this.targetPosition = target.position;
@@ -80,14 +93,26 @@ class HunterBot {
   // Choisir une nouvelle cible en fonction de l'état
   chooseTarget() {
     if (this.state === 'COLLECTING_CANNONS') {
+      // D'abord essayer de trouver un canon
       this.targetId = this.findClosestCannon();
       if (this.targetId) {
+        this.targetType = 'cannon';
         this.targetPosition = this.gameState.cannons[this.targetId].position;
         console.log(`[HunterBot ${this.id}] Targeting cannon ${this.targetId}`);
+      } else {
+        // Si aucun canon n'est trouvé, chercher un processeur
+        this.targetId = this.findClosestProcessor();
+        if (this.targetId) {
+          this.targetType = 'processor';
+          this.targetPosition = this.gameState.processors[this.targetId].position;
+          console.log(`[HunterBot ${this.id}] Targeting processor ${this.targetId}`);
+        }
       }
     } else {
+      // Mode chasse de joueurs
       this.targetId = this.findClosestPlayer();
       if (this.targetId) {
+        this.targetType = 'player';
         this.targetPosition = this.gameState.players[this.targetId].position;
         console.log(`[HunterBot ${this.id}] Targeting player ${this.targetId}`);
       }
@@ -116,6 +141,30 @@ class HunterBot {
     }
     
     return closestCannonId;
+  }
+  
+  // Trouver le processeur le plus proche
+  findClosestProcessor() {
+    const bot = this.gameState.players[this.id];
+    if (!bot) return null;
+    
+    let closestProcessorId = null;
+    let minDistance = Infinity;
+    
+    for (const processorId in this.gameState.processors) {
+      const processor = this.gameState.processors[processorId];
+      const distance = this.calculateDistance(
+        bot.position,
+        processor.position
+      );
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestProcessorId = processorId;
+      }
+    }
+    
+    return closestProcessorId;
   }
   
   // Trouver le joueur le plus proche
@@ -176,7 +225,7 @@ class HunterBot {
     const obstacleInfo = this.detectObstaclesAhead(bot);
     
     if (obstacleInfo.hasObstacle) {
-      // MODIFICATION: Tirer si l'obstacle est un robot ou un arbre
+      // Tirer si l'obstacle est un robot ou un arbre
       if (obstacleInfo.type === 'player' || obstacleInfo.type === 'tree') {
         inputs.fire = true;
         console.log(`[HunterBot ${this.id}] Shooting at ${obstacleInfo.type}`);
@@ -217,8 +266,8 @@ class HunterBot {
     // Calculer la distance à la cible
     const distance = this.calculateDistance(bot.position, this.targetPosition);
     
-    // Si on est très proche d'un canon et qu'on le chasse, ralentir
-    if (this.state === 'COLLECTING_CANNONS' && distance < 1) {
+    // Si on est très proche d'un collectible et qu'on le chasse, ralentir
+    if ((this.targetType === 'cannon' || this.targetType === 'processor') && distance < 1) {
       inputs.forward = distance > 0.2; // S'arrêter si très proche
     }
     
@@ -232,7 +281,7 @@ class HunterBot {
       hasObstacle: false,
       distance: Infinity,
       side: 'center',  // 'left', 'right', ou 'center'
-      type: null       // MODIFICATION: Ajouter le type d'obstacle
+      type: null       // Type d'obstacle
     };
     
     // Distance de détection
@@ -270,7 +319,7 @@ class HunterBot {
           result.distance = distance;
           result.side = angleDifference > 0 ? 'left' : 'right';
           
-          // MODIFICATION: Identifier le type d'obstacle
+          // Identifier le type d'obstacle
           result.type = structure.type || 'structure';
         }
       }
@@ -314,7 +363,7 @@ class HunterBot {
           result.distance = distance;
           result.side = angleDifference > 0 ? 'left' : 'right';
           
-          // MODIFICATION: Identifier comme joueur
+          // Identifier comme joueur
           result.type = 'player';
         }
       }
@@ -393,6 +442,7 @@ class HunterBot {
       if (this.collectedCannons >= 4 && this.state === 'COLLECTING_CANNONS') {
         this.state = 'HUNTING_PLAYERS';
         this.targetId = null;
+        this.targetType = null;
         this.targetPosition = null;
         console.log(`[HunterBot ${this.id}] Switching to HUNTING_PLAYERS mode after collection`);
       }
@@ -403,6 +453,7 @@ class HunterBot {
       if (this.state === 'HUNTING_PLAYERS' && data.killerId && this.targetId !== data.killerId) {
         // Changer de cible pour viser celui qui nous attaque
         this.targetId = data.killerId;
+        this.targetType = 'player';
         if (this.gameState.players[this.targetId]) {
           this.targetPosition = this.gameState.players[this.targetId].position;
           console.log(`[HunterBot ${this.id}] Under attack! Retargeting to ${this.targetId}`);
