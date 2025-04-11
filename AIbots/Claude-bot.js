@@ -31,7 +31,7 @@ class DominanceBot {
     this.aggressionThreshold = 30; // Processors before becoming aggressive
     this.healthRetreatThreshold = 40; // % health to retreat
     this.healthReturnThreshold = 80; // % health to return to normal
-    this.targetUpdateInterval = 500; // ms between target recalculations
+    this.targetUpdateInterval = 100; // ms between target recalculations
     this.stuckThreshold = 10; // Frames before considering stuck
     this.nearbyThreshold = 20; // Units to consider "nearby" for players
     this.processorPriorities = {
