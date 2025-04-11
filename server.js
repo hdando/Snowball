@@ -487,7 +487,12 @@ function spawnCannons() {
 // Fonction pour gérer les processeurs largués par un joueur mort
 function spawnDroppedProcessors(playerId, position) {
   if (!gameState.players[playerId] || !isValidPosition(position)) return;
-  
+
+  // Si le joueur a déjà largué des processeurs, ne pas le refaire
+  if (gameState.players[playerId].droppedProcessors) return;
+  // Marquer que ce joueur a déjà largué ses processeurs
+  gameState.players[playerId].droppedProcessors = true;
+
   // Pour chaque type de processeur possédé par le joueur
   const playerStats = gameState.players[playerId].stats;
   if (!playerStats || !playerStats.processorCounts) return;
@@ -926,7 +931,7 @@ io.on('connection', (socket) => {
       
       if (playerPosition) {
         const distance = calculateDistance(playerPosition, structure.position);
-        const MAX_STRUCTURE_ATTACK_RANGE = 50; // Distance maximale pour pouvoir attaquer une structure
+        const MAX_STRUCTURE_ATTACK_RANGE = 200; // Distance maximale pour pouvoir attaquer une structure
         
         if (distance > MAX_STRUCTURE_ATTACK_RANGE) {
           console.log(`Tentative d'attaque de structure trop éloignée: ${distance.toFixed(2)} > ${MAX_STRUCTURE_ATTACK_RANGE}`);
