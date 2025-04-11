@@ -3770,7 +3770,7 @@
 			// Masquer l'écran de connexion
 			loginScreen.style.display = 'none';
 			
-		    // Créer le joueur seulement maintenant
+			// Créer le joueur seulement maintenant
 			player = new Player(scene, gameMap, collisionSystem);
 			player.username = username;
 			
@@ -3800,12 +3800,18 @@
 			if (socket.connected) {
 				console.log("Connexion déjà établie. Démarrage du jeu...");
 				startGame();
+				
+				// AJOUTEZ ICI : Demander des informations sur les canons des bots
+				socket.emit('requestBotCannonsInfo');
 			} else {
 				console.log("En attente de la connexion au serveur...");
 				// Attendre la connexion avant de démarrer le jeu
 				socket.on('connect', () => {
 					console.log("Connexion établie. Démarrage du jeu...");
 					startGame();
+					
+					// AJOUTEZ ICI : Demander des informations sur les canons des bots
+					socket.emit('requestBotCannonsInfo');
 				});
 			}
 		}
@@ -4183,6 +4189,44 @@
 			  }
 			});
 		
+			socket.on('botCannonUpdated', (data) => {
+			  console.log(`Mise à jour des canons du bot ${data.botId}: ${data.sideCannonsCount} canons`);
+			  
+			  // Vérifier si le bot existe dans la liste des joueurs
+			  if (otherPlayers[data.botId]) {
+				const bot = otherPlayers[data.botId];
+				
+				// Vérifier combien de canons a déjà le bot
+				const currentCannonsCount = bot.sideCannons ? bot.sideCannons.length : 0;
+				
+				// Ajouter les canons manquants (il peut y avoir des décalages lors de reconnexions)
+				if (currentCannonsCount < data.sideCannonsCount) {
+				  console.log(`Ajout de ${data.sideCannonsCount - currentCannonsCount} canons au bot ${data.botId}`);
+				  
+				  // Ajouter chaque canon manquant
+				  for (let i = currentCannonsCount; i < data.sideCannonsCount; i++) {
+					bot.addSideCannon();
+				  }
+				}
+			  }
+			});
+			
+		    socket.on('botCannonsInfo', (botCannons) => {
+				console.log('Informations sur les canons des bots reçues:', botCannons);
+				
+				// Mettre à jour l'affichage des canons pour chaque bot
+				Object.entries(botCannons).forEach(([botId, info]) => {
+					if (otherPlayers[botId] && info.sideCannonsCount > 0) {
+						// S'assurer que le bot a le bon nombre de canons
+						const currentCount = otherPlayers[botId].sideCannons ? otherPlayers[botId].sideCannons.length : 0;
+						
+						// Ajouter les canons manquants
+						for (let i = currentCount; i < info.sideCannonsCount; i++) {
+							otherPlayers[botId].addSideCannon();
+						}
+					}
+				});
+			});
 		}
 		
 		// Fonction pour nettoyer tous les objets du jeu
@@ -4334,9 +4378,33 @@
 					});
 				}
 			}
-			if (otherPlayer.cannonGroup) {
-				otherPlayer.cannonGroup.position.y += 0; // Ajuster uniquement le canon
+			
+			// Si c'est un bot (ID commence par 'bot-'), initialiser correctement les canons latéraux
+			if (id.startsWith('bot-')) {
+				// S'assurer que les groupes nécessaires sont initialisés
+				if (!otherPlayer.sideCannons) {
+					otherPlayer.sideCannons = [];
+				}
+				
+				if (!otherPlayer.sideCannonsGroup) {
+					otherPlayer.sideCannonsGroup = new THREE.Group();
+					otherPlayer.mesh.add(otherPlayer.sideCannonsGroup);
+				}
+				
+				// Si nous avons reçu des informations sur le nombre de canons latéraux du bot
+				if (playerData.sideCannonsCount && playerData.sideCannonsCount > 0) {
+					console.log(`Bot ${id} a ${playerData.sideCannonsCount} canons latéraux. Ajout visuel...`);
+					for (let i = 0; i < playerData.sideCannonsCount; i++) {
+						otherPlayer.addSideCannon();
+					}
+				}
 			}
+			
+			// Ajuster la hauteur du canon si nécessaire
+			if (otherPlayer.cannonGroup) {
+				otherPlayer.cannonGroup.position.y += 0; // Ajuster uniquement le canon si nécessaire
+			}
+			
 			// Stocker la référence
 			otherPlayers[id] = otherPlayer;
 			
@@ -4345,7 +4413,6 @@
 			
 			return otherPlayer;
 		}
-
 		// Fonction pour mettre à jour la position d'un autre joueur
 		function updateOtherPlayerPosition(id, playerData) {
 			const otherPlayer = otherPlayers[id];
