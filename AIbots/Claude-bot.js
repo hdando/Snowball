@@ -33,7 +33,9 @@ class DominanceBot {
       'attackSpeed': 0.9,
       'speed': 0.8,
       'repairSpeed': 0.7
-    };
+    }
+
+module.exports = DominanceBot;;
   }
   
   update(gameState) {
