@@ -116,7 +116,10 @@ class BotManager {
         // Ajouter le bot au système de collision
         this.addBotToCollisionSystem(botId);
         
-        console.log(`Bot ${bot.name} créé avec l'ID: ${botId}`);
+		// Informer les clients du nombre de canons latéraux pour ce bot
+		this.notifyClientsOfBotCannonUpdate(botId, this.botSideCannons[botId]);
+        
+		console.log(`Bot ${bot.name} créé avec l'ID: ${botId}`);
       } else {
         console.log(`Un bot de type ${bot.name} existe déjà, pas de nouvelle instance créée.`);
       }
@@ -242,9 +245,21 @@ class BotManager {
       playerId: botId
     });
     
-    console.log(`Bot ${botId} a collecté un canon latéral (total: ${this.botSideCannons[botId]})`);
+	// Informer les clients de la mise à jour des canons du bot
+	this.notifyClientsOfBotCannonUpdate(botId, this.botSideCannons[botId]);
+    
+	console.log(`Bot ${botId} a collecté un canon latéral (total: ${this.botSideCannons[botId]})`);
   }
   
+	notifyClientsOfBotCannonUpdate(botId, cannonCount) {
+		// Informer tous les clients que le bot a collecté un canon
+		this.io.emit('botCannonUpdated', {
+		botId: botId,
+		sideCannonsCount: cannonCount
+		});
+
+		console.log(`Notification envoyée: Bot ${botId} a maintenant ${cannonCount} canons latéraux`);
+	}
   // Méthode pour collecter un processeur par un bot
   collectProcessor(botId, processorId, processor) {
     const bot = this.gameState.players[botId];
@@ -861,7 +876,7 @@ class BotManager {
           this.stuckCounters[botId]++;
           
           // Si le bot est bloqué depuis trop longtemps, forcer un mouvement aléatoire
-          if (this.stuckCounters[botId] > 100) {
+          if (this.stuckCounters[botId] > 1000) {
             console.log(`Bot ${botId} semble bloqué, application d'un mouvement aléatoire`);
             this.applyRandomMovement(botId);
             this.stuckCounters[botId] = 0;
