@@ -1,750 +1,868 @@
-class AdvancedBot {
+const THREE = require('three');
+
+class DominanceBot {
   constructor(botId, gameState, sendInputs) {
-    // Basic properties
-    this.id = botId;
+    this.botId = botId;
     this.gameState = gameState;
     this.sendInputs = sendInputs;
     
     // Bot state
-    this.lastUpdateTime = Date.now();
-    this.updateInterval = 50; // milliseconds (increased frequency)
-    this.isAlive = true;
+    this.target = null;
+    this.targetType = null; // 'processor', 'cannon', 'player', 'position'
+    this.state = 'collecting'; // 'collecting', 'attacking', 'retreating', 'flanking'
+    this.lastHealth = 100;
+    this.attackingPlayer = null;
+    this.dangerLevel = 0;
     this.lastPosition = null;
     this.stuckCounter = 0;
-    this.stuckThreshold = 5;
-    
-    // Combat parameters
-    this.shootCooldown = 1000; // 1 second between shots (more aggressive)
-    this.lastShootTime = 0;
-    this.targetPlayerId = null;
-    this.targetPriority = null;
-    this.lastTargetCheck = 0;
-    this.targetCheckInterval = 500; // Check for new targets every 0.5 seconds
-    
-    // Movement parameters
-    this.randomMoveTime = 0;
-    this.randomMoveDirection = { left: false, right: false };
-    this.avoidanceTime = 0;
-    this.avoidanceDirection = { left: false, right: false };
-    this.collisionCooldown = 0;
-    this.exploreAngle = Math.random() * Math.PI * 2;
-    this.exploreTimer = 0;
-    this.exploreDuration = 10000; // Explore in one direction for 10 seconds
-    
-    // Resource focus and collection strategy
-    this.collectibleMap = new Map(); // Keep track of processor locations
-    this.priorityTypes = ["attackSpeed", "attack", "speed", "range", "hp", "resistance", "repairSpeed"];
-    this.avoidingPlayerTime = 0;
+    this.lastTargetUpdateTime = 0;
+    this.lastFireTime = 0;
     
     // Strategy parameters
-    this.aggressive = false; // Start passive, focus on collecting
-    this.minProcessorsForAggressive = 50; // Become aggressive after collecting this many
-    this.escapeLowHealth = 0.3; // Run away when health below 30%
-    this.safeDistance = 30; // Distance to maintain from powerful enemies
-    
-    // Stats tracking
-    this.processorCount = 0;
-    this.killCount = 0;
-    this.deathCount = 0;
-    
-    console.log(`AdvancedBot initialized with ID: ${this.id}`);
+    this.aggressionThreshold = 30; // Processors before becoming aggressive
+    this.healthRetreatThreshold = 40; // % health to retreat
+    this.healthReturnThreshold = 80; // % health to return to normal
+    this.targetUpdateInterval = 500; // ms between target recalculations
+    this.stuckThreshold = 10; // Frames before considering stuck
+    this.nearbyThreshold = 20; // Units to consider "nearby" for players
+    this.processorPriorities = {
+      'attack': 1.3,
+      'hp': 1.2,
+      'resistance': 1.1,
+      'range': 1.0,
+      'attackSpeed': 0.9,
+      'speed': 0.8,
+      'repairSpeed': 0.7
+    };
   }
   
   update(gameState) {
     // Update our reference to the game state
     this.gameState = gameState;
     
-    // Get the current state of our bot
-    const me = this.getMyState();
-    if (!me || !me.isAlive) {
-      // If the bot is dead, send no input
-      this.sendInputs({
-        forward: false,
-        backward: false,
-        left: false,
-        right: false,
-        fire: false
-      });
-      return;
-    }
+    // Get our bot from the game state
+    const bot = gameState.players[this.botId];
+    if (!bot || !bot.isAlive) return;
     
+    // Check if we're stuck
+    this.detectIfStuck(bot);
+    
+    // Calculate our total processors
+    const totalProcessors = this.calculateTotalProcessors(bot);
+    
+    // Check if we're being attacked
+    this.checkIfUnderAttack(bot);
+    
+    // Only update target periodically for performance
     const currentTime = Date.now();
-    
-    // Check for being stuck
-    this.checkIfStuck(me);
-    
-    // Update processor count for strategy adjustment
-    if (me.stats && me.stats.processorCounts) {
-      this.processorCount = Object.values(me.stats.processorCounts).reduce((a, b) => a + b, 0);
+    if (currentTime - this.lastTargetUpdateTime > this.targetUpdateInterval || !this.target) {
+      // Determine our state based on health and situation
+      this.updateState(bot, totalProcessors);
       
-      // Adjust strategy based on processor count
-      this.aggressive = this.processorCount >= this.minProcessorsForAggressive;
+      // Choose a target based on our state
+      this.chooseTarget(bot, totalProcessors);
+      
+      this.lastTargetUpdateTime = currentTime;
     }
     
-    // Decide if we should fire (based on cooldown)
-    const shouldFire = currentTime - this.lastShootTime > this.shootCooldown;
-    if (shouldFire) {
-      this.lastShootTime = currentTime;
-    }
+    // Generate inputs based on target and state
+    const inputs = this.generateInputs(bot);
     
-    // Avoid other players when low on health or when significantly weaker
-    if (this.shouldAvoidPlayers(me)) {
-      const nearestPlayer = this.findNearestPlayer(me.position);
-      if (nearestPlayer) {
-        this.avoidPlayer(me, nearestPlayer, shouldFire);
-        return;
-      }
-    }
+    // Send the inputs
+    this.sendInputs(inputs);
     
-    // If we're in random move mode (after collision or being stuck)
-    if (currentTime < this.randomMoveTime) {
-      this.sendRandomMovement(shouldFire);
-      return;
-    }
-    
-    // If we're in avoidance mode (after detecting obstacle)
-    if (currentTime < this.avoidanceTime) {
-      this.sendAvoidanceMovement(shouldFire);
-      return;
-    }
-    
-    // Check if we need to update our target
-    if (currentTime - this.lastTargetCheck > this.targetCheckInterval) {
-      this.updateTarget(me);
-      this.lastTargetCheck = currentTime;
-    }
-    
-    // Target acquisition logic
-    if (this.aggressive && this.targetPlayerId) {
-      const targetPlayer = this.gameState.players[this.targetPlayerId];
-      if (targetPlayer && targetPlayer.isAlive) {
-        this.attackPlayer(me, targetPlayer, shouldFire);
-        return;
+    // Update lastPosition for stuck detection
+    this.lastPosition = {...bot.position};
+  }
+
+  detectIfStuck(bot) {
+    if (this.lastPosition) {
+      const distance = this.calculateDistance(this.lastPosition, bot.position);
+      if (distance < 0.01) {
+        this.stuckCounter++;
+        
+        // If stuck for too long, pick a new random direction
+        if (this.stuckCounter > this.stuckThreshold) {
+          this.chooseRandomDirection(bot);
+          this.stuckCounter = 0;
+        }
       } else {
-        // Clear invalid target
-        this.targetPlayerId = null;
-      }
-    }
-    
-    // Look for the closest valuable processor based on our strategy
-    const closestProcessor = this.findBestProcessor(me);
-    
-    if (closestProcessor) {
-      // We found a processor, move towards it
-      this.moveTowardsTarget(me, closestProcessor.position, shouldFire);
-    } else {
-      // No processor found, explore the map
-      this.exploreMap(me, shouldFire);
-    }
-  }
-  
-  // Get the current state of the bot
-  getMyState() {
-    return this.gameState.players[this.id];
-  }
-  
-  // Check if we're stuck and not moving
-  checkIfStuck(me) {
-    if (!this.lastPosition) {
-      this.lastPosition = { ...me.position };
-      return;
-    }
-    
-    const distance = this.calculateDistance(this.lastPosition, me.position);
-    
-    // If we've barely moved
-    if (distance < 0.05) {
-      this.stuckCounter++;
-      
-      // If stuck for too long, trigger random movement
-      if (this.stuckCounter > this.stuckThreshold) {
-        this.randomMoveTime = Date.now() + 3000; // Random movement for 3 seconds
         this.stuckCounter = 0;
       }
-    } else {
-      // Reset stuck counter if moving
-      this.stuckCounter = 0;
     }
-    
-    // Update last position
-    this.lastPosition = { ...me.position };
   }
-  
-  // Update our current target
-  updateTarget(me) {
-    // If we're not aggressive yet, don't look for targets
-    if (!this.aggressive) {
-      this.targetPlayerId = null;
-      return;
-    }
+
+  chooseRandomDirection(bot) {
+    // Create a random direction to move in
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 20 + Math.random() * 20; // 20-40 units away
     
-    // Find potential targets
-    const targets = [];
-    
-    for (const playerId in this.gameState.players) {
-      // Don't target self
-      if (playerId === this.id) continue;
-      
-      const player = this.gameState.players[playerId];
-      if (!player.isAlive) continue;
-      
-      // Calculate distance
-      const distance = this.calculateDistance(me.position, player.position);
-      
-      // Only consider players within reasonable attack range
-      if (distance > me.stats.range * 1.5) continue;
-      
-      // Check how dangerous this player is compared to us
-      const dangerRatio = this.calculateDangerRatio(me, player);
-      
-      // Add to potential targets
-      targets.push({
-        id: playerId,
-        distance: distance,
-        hp: player.hp,
-        maxHp: player.maxHp,
-        dangerRatio: dangerRatio
-      });
-    }
-    
-    // No targets in range
-    if (targets.length === 0) {
-      this.targetPlayerId = null;
-      return;
-    }
-    
-    // Sort by various criteria
-    targets.sort((a, b) => {
-      // Prefer weaker enemies (lower danger ratio)
-      if (a.dangerRatio < 0.8 && b.dangerRatio >= 0.8) return -1;
-      if (a.dangerRatio >= 0.8 && b.dangerRatio < 0.8) return 1;
-      
-      // Then prefer low health percentage enemies
-      const aHealthPercent = a.hp / a.maxHp;
-      const bHealthPercent = b.hp / b.maxHp;
-      if (aHealthPercent < 0.3 && bHealthPercent >= 0.3) return -1;
-      if (aHealthPercent >= 0.3 && bHealthPercent < 0.3) return 1;
-      
-      // Finally, prefer closer enemies
-      return a.distance - b.distance;
-    });
-    
-    // Set the best target
-    this.targetPlayerId = targets[0].id;
-    this.targetPriority = targets[0].dangerRatio < 0.8 ? "easy" : 
-                          targets[0].hp / targets[0].maxHp < 0.3 ? "weakened" : "closest";
-  }
-  
-  // Calculate how dangerous a player is compared to us
-  calculateDangerRatio(me, player) {
-    if (!me.stats || !player.stats) return 1.0;
-    
-    // Calculate combat effectiveness (simple approximation)
-    const myEffectiveness = (me.stats.attack || 10) * (me.stats.attackSpeed || 0.5) * 
-                           (me.stats.range || 10) * (me.stats.speed || 0.02);
-    
-    const theirEffectiveness = (player.stats.attack || 10) * (player.stats.attackSpeed || 0.5) * 
-                              (player.stats.range || 10) * (player.stats.speed || 0.02);
-    
-    // Return ratio of their effectiveness to ours
-    // Higher values mean they're more dangerous compared to us
-    return theirEffectiveness / myEffectiveness;
-  }
-  
-  // Decide if we should be avoiding other players
-  shouldAvoidPlayers(me) {
-    // Avoid players when health is low
-    if (me.hp / me.maxHp < this.escapeLowHealth) {
-      this.avoidingPlayerTime = Date.now() + 10000; // Avoid for 10 seconds
-      return true;
-    }
-    
-    // Continue avoiding if timer is still active
-    if (Date.now() < this.avoidingPlayerTime) {
-      return true;
-    }
-    
-    // Avoid if we're weak (not many processors collected yet)
-    if (this.processorCount < 20) {
-      return true;
-    }
-    
-    return false;
-  }
-  
-  // Find the nearest player to a position
-  findNearestPlayer(position) {
-    let closest = null;
-    let minDistance = Infinity;
-    
-    for (const playerId in this.gameState.players) {
-      // Don't target self
-      if (playerId === this.id) continue;
-      
-      const player = this.gameState.players[playerId];
-      if (!player.isAlive) continue;
-      
-      const distance = this.calculateDistance(position, player.position);
-      
-      if (distance < minDistance) {
-        minDistance = distance;
-        closest = player;
-      }
-    }
-    
-    return closest;
-  }
-  
-  // Move away from a player
-  avoidPlayer(me, player, shouldFire) {
-    // Calculate direction from player to us
-    const awayVector = {
-      x: me.position.x - player.position.x,
-      z: me.position.z - player.position.z
+    const targetPosition = {
+      x: bot.position.x + Math.sin(angle) * distance,
+      y: bot.position.y,
+      z: bot.position.z + Math.cos(angle) * distance
     };
     
-    // Normalize
-    const length = Math.sqrt(awayVector.x * awayVector.x + awayVector.z * awayVector.z);
-    awayVector.x /= length;
-    awayVector.z /= length;
-    
-    // Calculate escape angle
-    const escapeAngle = Math.atan2(awayVector.x, awayVector.z);
-    
-    // Set rotation to face away from the player
-    this.rotateTowards(me, escapeAngle);
-    
-    // Move forward to escape
-    this.sendInputs({
-      forward: true,
-      backward: false,
-      left: Math.abs(this.normalizeAngle(me.rotation - escapeAngle)) > 0.1,
-      right: Math.abs(this.normalizeAngle(escapeAngle - me.rotation)) > 0.1,
-      fire: shouldFire // Fire while retreating for cover
-    });
+    this.target = targetPosition;
+    this.targetType = 'position';
+    this.state = 'collecting'; // Reset state
   }
   
-  // Attack a player
-  attackPlayer(me, target, shouldFire) {
-    // Calculate angle to target
-    const targetAngle = Math.atan2(
-      target.position.x - me.position.x,
-      target.position.z - me.position.z
-    );
+  calculateTotalProcessors(bot) {
+    if (!bot.stats || !bot.stats.processorCounts) return 0;
+    return Object.values(bot.stats.processorCounts).reduce((sum, count) => sum + count, 0);
+  }
+  
+  checkIfUnderAttack(bot) {
+    // Check if health decreased since last update
+    if (bot.hp < this.lastHealth) {
+      this.dangerLevel += (this.lastHealth - bot.hp) * 2;
+      
+      // Danger level decays over time
+      setTimeout(() => {
+        this.dangerLevel = Math.max(0, this.dangerLevel - 10);
+      }, 3000);
+    }
+    this.lastHealth = bot.hp;
     
-    // Calculate distance to target
-    const distance = this.calculateDistance(me.position, target.position);
+    // Also check for nearby players as potential threats
+    this.detectNearbyPlayers(bot);
+  }
+  
+  detectNearbyPlayers(bot) {
+    let nearestEnemyDistance = Infinity;
+    let nearestEnemyId = null;
     
-    // Determine if we should advance, maintain distance, or retreat
-    let shouldAdvance = false;
-    let shouldRetreat = false;
+    Object.entries(this.gameState.players).forEach(([playerId, player]) => {
+      // Skip ourselves and dead players
+      if (playerId === this.botId || !player.isAlive) return;
+      
+      const distance = this.calculateDistance(bot.position, player.position);
+      if (distance < this.nearbyThreshold && distance < nearestEnemyDistance) {
+        nearestEnemyDistance = distance;
+        nearestEnemyId = playerId;
+      }
+    });
     
-    if (distance > me.stats.range * 0.9) {
-      // Too far away, advance
-      shouldAdvance = true;
-    } else if (distance < me.stats.range * 0.5) {
-      // Too close, retreat a bit to maintain optimal firing range
-      shouldRetreat = true;
+    // If there's a nearby enemy, increase danger level based on proximity
+    if (nearestEnemyId) {
+      const dangerIncrease = (this.nearbyThreshold - nearestEnemyDistance) / 2;
+      this.dangerLevel += dangerIncrease;
+      
+      // Also remember this player as a potential attacker
+      this.attackingPlayer = nearestEnemyId;
+    }
+  }
+  
+  updateState(bot, totalProcessors) {
+    const healthPercent = (bot.hp / bot.maxHp) * 100;
+    
+    // Retreat if health is low or danger level is high
+    if (healthPercent < this.healthRetreatThreshold || this.dangerLevel > 30) {
+      this.state = 'retreating';
+    }
+    // Return to normal state if health recovered
+    else if (this.state === 'retreating' && healthPercent > this.healthReturnThreshold) {
+      this.state = 'collecting';
+    }
+    // Become aggressive if we have enough processors
+    else if (totalProcessors > this.aggressionThreshold && 
+            (this.state === 'collecting' || this.state === 'flanking')) {
+      // Check if there are suitable targets before committing to attack
+      const targets = this.findPotentialPlayerTargets(bot, totalProcessors);
+      if (targets.length > 0) {
+        this.state = 'attacking';
+      } else {
+        this.state = 'collecting';
+      }
+    }
+    // If attacking but no suitable targets, revert to collecting
+    else if (this.state === 'attacking' && !this.isValidPlayerTarget(this.target)) {
+      this.state = 'collecting';
     }
     
-    // Check for obstacles
-    if (distance > 5) { // Only check if not already very close
-      const hasObstacle = this.checkForObstacle(me, target.position);
-      if (hasObstacle) {
-        // Try to navigate around obstacles
-        this.avoidanceTime = Date.now() + 1000;
-        this.avoidanceDirection.left = Math.random() > 0.5;
-        this.avoidanceDirection.right = !this.avoidanceDirection.left;
+    // Add flanking behavior when enemy is far but we want to attack
+    if (this.state === 'attacking' && this.targetType === 'player') {
+      const targetPlayer = this.gameState.players[this.target];
+      if (targetPlayer && this.calculateDistance(bot.position, targetPlayer.position) > 30) {
+        this.state = 'flanking';
+      }
+    }
+  }
+  
+  isValidPlayerTarget(targetId) {
+    if (!targetId || this.targetType !== 'player') return false;
+    
+    const player = this.gameState.players[targetId];
+    return player && player.isAlive;
+  }
+  
+  chooseTarget(bot, totalProcessors) {
+    // Reset target if needed
+    if (this.targetType === 'processor' && !this.gameState.processors[this.target]) {
+      this.target = null;
+      this.targetType = null;
+    } else if (this.targetType === 'cannon' && !this.gameState.cannons[this.target]) {
+      this.target = null;
+      this.targetType = null;
+    } else if (this.targetType === 'player' && 
+              (!this.gameState.players[this.target] || !this.gameState.players[this.target].isAlive)) {
+      this.target = null;
+      this.targetType = null;
+    }
+    
+    switch (this.state) {
+      case 'collecting':
+        // Find nearest processor or cannon
+        this.findCollectibleTarget(bot, totalProcessors);
+        break;
+      case 'attacking':
+        // Find a suitable player to attack
+        this.findPlayerTarget(bot, totalProcessors);
+        break;
+      case 'retreating':
+        // Move away from danger
+        this.findRetreatDirection(bot);
+        break;
+      case 'flanking':
+        // Find a flanking position around the target player
+        this.findFlankingPosition(bot);
+        break;
+    }
+  }
+  
+  findCollectibleTarget(bot, totalProcessors) {
+    // Choose what to prioritize based on current stats
+    const processorPriorities = this.calculateProcessorPriorities(bot, totalProcessors);
+    
+    let bestTarget = null;
+    let bestType = null;
+    let bestScore = Infinity;
+    
+    // Check processors
+    Object.entries(this.gameState.processors).forEach(([id, processor]) => {
+      const distance = this.calculateDistance(bot.position, processor.position);
+      
+      // Calculate obstacle avoidance penalty
+      const obstaclePenalty = this.calculateObstaclePenalty(bot.position, processor.position);
+      
+      // Priority based on type
+      const typePriority = processorPriorities[processor.type] || 1.0;
+      
+      // Lower score is better (distance / priority)
+      const score = (distance + obstaclePenalty) / typePriority;
+      
+      if (score < bestScore) {
+        bestScore = score;
+        bestTarget = id;
+        bestType = 'processor';
+      }
+    });
+    
+    // Check cannons - always high priority if we don't have many
+    const botSideCannons = this.estimateBotSideCannonCount(bot);
+    const cannonPriority = botSideCannons < 4 ? 1.5 : 0.5; // High priority if we need more
+    
+    Object.entries(this.gameState.cannons).forEach(([id, cannon]) => {
+      const distance = this.calculateDistance(bot.position, cannon.position);
+      
+      // Calculate obstacle avoidance penalty
+      const obstaclePenalty = this.calculateObstaclePenalty(bot.position, cannon.position);
+      
+      // Lower score is better
+      const score = (distance + obstaclePenalty) / cannonPriority;
+      
+      if (score < bestScore) {
+        bestScore = score;
+        bestTarget = id;
+        bestType = 'cannon';
+      }
+    });
+    
+    // If we found a target, set it
+    if (bestTarget) {
+      this.target = bestTarget;
+      this.targetType = bestType;
+    } else {
+      // If no good targets, pick a random direction
+      this.chooseRandomDirection(bot);
+    }
+  }
+  
+  calculateProcessorPriorities(bot, totalProcessors) {
+    // Start with base priorities
+    const priorities = {...this.processorPriorities};
+    
+    // Adjust based on bot's needs
+    if (bot.hp < bot.maxHp * 0.7) {
+      // Prioritize HP when low health
+      priorities.hp *= 1.5;
+      priorities.repairSpeed *= 1.3;
+    }
+    
+    if (this.dangerLevel > 20) {
+      // Prioritize defensive stats when in danger
+      priorities.resistance *= 1.4;
+      priorities.hp *= 1.3;
+    }
+    
+    if (totalProcessors > this.aggressionThreshold) {
+      // Prioritize offensive stats when we're getting stronger
+      priorities.attack *= 1.3;
+      priorities.attackSpeed *= 1.2;
+      priorities.range *= 1.2;
+    }
+    
+    return priorities;
+  }
+  
+  calculateObstaclePenalty(startPos, endPos) {
+    let penalty = 0;
+    
+    // Check for obstacles between positions
+    Object.values(this.gameState.structures).forEach(structure => {
+      if (structure.destroyed) return;
+      
+      const structurePos = structure.position;
+      
+      // Calculate distance from structure to the line between start and end
+      const lineLength = this.calculateDistance(startPos, endPos);
+      if (lineLength === 0) return 0;
+      
+      // Vector from start to end
+      const dirX = (endPos.x - startPos.x) / lineLength;
+      const dirZ = (endPos.z - startPos.z) / lineLength;
+      
+      // Vector from start to structure
+      const structDirX = structurePos.x - startPos.x;
+      const structDirZ = structurePos.z - startPos.z;
+      
+      // Calculate dot product
+      const dot = dirX * structDirX + dirZ * structDirZ;
+      
+      // Find closest point on line
+      const closestX = startPos.x + dirX * Math.max(0, Math.min(dot, lineLength));
+      const closestZ = startPos.z + dirZ * Math.max(0, Math.min(dot, lineLength));
+      
+      // Distance from structure to line
+      const distToLine = Math.sqrt(
+        (structurePos.x - closestX) ** 2 + 
+        (structurePos.z - closestZ) ** 2
+      );
+      
+      // Add penalty based on how close the path goes to obstacles
+      const obstacleRadius = structure.type === 'waterTower' ? 5 : 2;
+      if (distToLine < obstacleRadius + 3) { // Add some margin
+        penalty += 20 * (1 - distToLine / (obstacleRadius + 3));
+      }
+    });
+    
+    return penalty;
+  }
+  
+  findPotentialPlayerTargets(bot, totalProcessors) {
+    const potentialTargets = [];
+    
+    Object.entries(this.gameState.players).forEach(([playerId, player]) => {
+      // Skip ourselves, dead players, and other bots
+      if (playerId === this.botId || !player.isAlive || playerId.startsWith('bot-')) return;
+      
+      // Calculate their total processors
+      const playerProcessors = player.stats && player.stats.processorCounts ?
+        Object.values(player.stats.processorCounts).reduce((sum, count) => sum + count, 0) : 0;
+      
+      // Don't attack players much stronger than us
+      if (playerProcessors > totalProcessors * 1.3) return;
+      
+      // Consider distance
+      const distance = this.calculateDistance(bot.position, player.position);
+      
+      // Calculate a score (higher is better)
+      const strengthDifference = totalProcessors - playerProcessors;
+      const healthPercentage = (player.hp / player.maxHp) * 100;
+      
+      // Prefer weaker, more damaged players that are closer
+      const targetScore = strengthDifference + (100 - healthPercentage) - (distance * 0.1);
+      
+      potentialTargets.push({
+        id: playerId,
+        score: targetScore,
+        distance: distance
+      });
+    });
+    
+    // Sort by score, highest first
+    return potentialTargets.sort((a, b) => b.score - a.score);
+  }
+  
+  findPlayerTarget(bot, totalProcessors) {
+    const potentialTargets = this.findPotentialPlayerTargets(bot, totalProcessors);
+    
+    // Choose the best target
+    if (potentialTargets.length > 0) {
+      this.target = potentialTargets[0].id;
+      this.targetType = 'player';
+    } else {
+      // If no good targets, go back to collecting
+      this.state = 'collecting';
+      this.findCollectibleTarget(bot, totalProcessors);
+    }
+  }
+  
+  findRetreatDirection(bot) {
+    // If we know who's attacking us, move away from them
+    if (this.attackingPlayer && this.gameState.players[this.attackingPlayer]) {
+      const attacker = this.gameState.players[this.attackingPlayer];
+      
+      // Vector from attacker to us
+      const vectorFromAttacker = {
+        x: bot.position.x - attacker.position.x,
+        y: 0,
+        z: bot.position.z - attacker.position.z
+      };
+      
+      // Normalize and extend
+      const magnitude = Math.sqrt(vectorFromAttacker.x ** 2 + vectorFromAttacker.z ** 2);
+      if (magnitude > 0) {
+        const normalizedVector = {
+          x: vectorFromAttacker.x / magnitude,
+          y: 0,
+          z: vectorFromAttacker.z / magnitude
+        };
+        
+        // Create a retreat position away from attacker
+        const retreatPosition = {
+          x: bot.position.x + normalizedVector.x * 30,
+          y: bot.position.y,
+          z: bot.position.z + normalizedVector.z * 30
+        };
+        
+        // Ensure we don't retreat out of the map
+        const distanceFromCenter = Math.sqrt(retreatPosition.x ** 2 + retreatPosition.z ** 2);
+        if (distanceFromCenter > 90) { // 90% of map radius
+          // Scale back to a safe distance
+          const scale = 80 / distanceFromCenter;
+          retreatPosition.x *= scale;
+          retreatPosition.z *= scale;
+        }
+        
+        this.target = retreatPosition;
+        this.targetType = 'position';
         return;
       }
     }
     
-    // Rotate to face target
-    this.rotateTowards(me, targetAngle);
+    // If no attacker, move towards the edge of the map
+    const vectorFromCenter = {
+      x: bot.position.x,
+      y: 0,
+      z: bot.position.z
+    };
     
-    // Send inputs for attacking the target
-    this.sendInputs({
-      forward: shouldAdvance && Math.abs(this.normalizeAngle(me.rotation - targetAngle)) < 0.5,
-      backward: shouldRetreat && Math.abs(this.normalizeAngle(me.rotation - targetAngle)) < 0.5,
-      left: this.normalizeAngle(targetAngle - me.rotation) < -0.05,
-      right: this.normalizeAngle(targetAngle - me.rotation) > 0.05,
-      fire: shouldFire
-    });
+    // Normalize and extend
+    const magnitude = Math.sqrt(vectorFromCenter.x ** 2 + vectorFromCenter.z ** 2);
+    if (magnitude > 0) {
+      const normalizedVector = {
+        x: vectorFromCenter.x / magnitude,
+        y: 0,
+        z: vectorFromCenter.z / magnitude
+      };
+      
+      // Create a retreat position towards the edge
+      const retreatPosition = {
+        x: normalizedVector.x * 80, // 80% of map radius
+        y: bot.position.y,
+        z: normalizedVector.z * 80
+      };
+      
+      this.target = retreatPosition;
+      this.targetType = 'position';
+    } else {
+      // If at center, pick a random direction
+      this.chooseRandomDirection(bot);
+    }
   }
   
-  // Find the best processor based on our current strategy
-  findBestProcessor(me) {
-    if (!this.gameState.processors) {
-      return null;
+  findFlankingPosition(bot) {
+    if (this.targetType !== 'player' || !this.gameState.players[this.target]) {
+      // If no valid player target, revert to attacking or collecting
+      this.state = 'collecting';
+      this.findCollectibleTarget(bot, totalProcessors);
+      return;
     }
     
-    const processors = Object.values(this.gameState.processors);
+    const targetPlayer = this.gameState.players[this.target];
     
-    if (processors.length === 0) {
-      return null;
+    // Get position and direction of target
+    const targetPos = targetPlayer.position;
+    const targetDir = targetPlayer.direction;
+    
+    // Calculate perpendicular vector for flanking
+    // Randomly choose left or right flank
+    const flankSide = Math.random() > 0.5 ? 1 : -1;
+    const perpVector = {
+      x: -targetDir.z * flankSide,
+      y: 0,
+      z: targetDir.x * flankSide
+    };
+    
+    // Normalize perpendicular vector
+    const magnitude = Math.sqrt(perpVector.x ** 2 + perpVector.z ** 2);
+    if (magnitude > 0) {
+      perpVector.x /= magnitude;
+      perpVector.z /= magnitude;
     }
     
-    // Filter processors to include only those without obstacles in direct path
-    const accessibleProcessors = processors.filter(processor => {
-      return !this.checkForObstacle(me, processor.position);
-    });
+    // Calculate flanking position: behind and to the side of target
+    const flankPosition = {
+      x: targetPos.x + (targetDir.x * -5) + (perpVector.x * 10), // 5 units behind, 10 to the side
+      y: targetPos.y,
+      z: targetPos.z + (targetDir.z * -5) + (perpVector.z * 10)
+    };
     
-    // Use accessible processors if available, otherwise use all processors
-    const candidateProcessors = accessibleProcessors.length > 0 ? accessibleProcessors : processors;
+    this.target = flankPosition;
+    this.targetType = 'position';
+  }
+  
+  generateInputs(bot) {
+    const inputs = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+      fire: false
+    };
     
-    // Calculate scores for each processor
-    const scoredProcessors = candidateProcessors.map(processor => {
-      const distance = this.calculateDistance(me.position, processor.position);
+    if (!this.target) return inputs;
+    
+    let targetPosition;
+    
+    if (this.targetType === 'processor') {
+      targetPosition = this.gameState.processors[this.target]?.position;
+      if (!targetPosition) return inputs; // Processor no longer exists
+    } else if (this.targetType === 'cannon') {
+      targetPosition = this.gameState.cannons[this.target]?.position;
+      if (!targetPosition) return inputs; // Cannon no longer exists
+    } else if (this.targetType === 'player') {
+      const targetPlayer = this.gameState.players[this.target];
+      if (!targetPlayer || !targetPlayer.isAlive) return inputs;
+      targetPosition = targetPlayer.position;
+    } else if (this.targetType === 'position') {
+      targetPosition = this.target; // Target is already a position
+    }
+    
+    if (!targetPosition) return inputs;
+    
+    // Calculate angle to target
+    const angleToTarget = Math.atan2(
+      targetPosition.x - bot.position.x,
+      targetPosition.z - bot.position.z
+    );
+    
+    // Calculate current bot angle
+    const botAngle = bot.rotation;
+    
+    // Normalize angles
+    let angleDiff = angleToTarget - botAngle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    
+    // Determine rotation
+    const rotationThreshold = 0.1; // Radians
+    if (angleDiff > rotationThreshold) {
+      inputs.left = true;
+    } else if (angleDiff < -rotationThreshold) {
+      inputs.right = true;
+    } else {
+      // We're facing the right direction, move forward
+      inputs.forward = true;
+    }
+    
+    // Special handling for player targets - strafing and smart firing
+    if (this.targetType === 'player') {
+      const targetPlayer = this.gameState.players[this.target];
+      const distanceToTarget = this.calculateDistance(bot.position, targetPosition);
       
-      // Base score is inverse of distance (closer is better)
-      let score = 1000 / (distance + 1);
+      // Calculate bot range
+      const botRange = bot.stats?.range || 10;
       
-      // Adjust score based on processor type priority
-      const typeIndex = this.priorityTypes.indexOf(processor.type);
-      if (typeIndex !== -1) {
-        // Scale from 1.0 to 2.0 based on priority (higher priority gets higher multiplier)
-        const typePriorityMultiplier = 2.0 - (typeIndex / this.priorityTypes.length);
-        score *= typePriorityMultiplier;
-      }
-      
-      // De-prioritize processors that are close to other players
-      for (const playerId in this.gameState.players) {
-        if (playerId !== this.id) {
-          const player = this.gameState.players[playerId];
-          if (player.isAlive) {
-            const playerToProcessorDist = this.calculateDistance(player.position, processor.position);
-            // If another player is close to this processor, reduce its score
-            if (playerToProcessorDist < distance) {
-              score *= 0.5; // Significant reduction if another player is closer
-            }
-          }
+      // If we're in attack range but not too close, stop moving forward and just fire
+      if (distanceToTarget <= botRange * 0.9 && distanceToTarget > 5) {
+        inputs.forward = false;
+        // Small rotation for strafing
+        if (this.dangerLevel > 10) {
+          inputs.left = Math.random() > 0.5;
+          inputs.right = !inputs.left;
         }
       }
       
-      return {
-        processor: processor,
-        score: score
-      };
-    });
-    
-    // Sort by score (highest first)
-    scoredProcessors.sort((a, b) => b.score - a.score);
-    
-    // Return the highest scoring processor
-    return scoredProcessors.length > 0 ? scoredProcessors[0].processor : null;
-  }
-  
-  // Explore the map when no better actions are available
-  exploreMap(me, shouldFire) {
-    const currentTime = Date.now();
-    
-    // Change direction periodically
-    if (currentTime > this.exploreTimer) {
-      this.exploreAngle = Math.random() * Math.PI * 2;
-      this.exploreTimer = currentTime + this.exploreDuration;
+      // If we're too close, back up a bit
+      if (distanceToTarget < 5) {
+        inputs.forward = false;
+        inputs.backward = true;
+      }
+      
+      // Fire if facing the target and in range
+      if (Math.abs(angleDiff) < 0.3 && distanceToTarget <= botRange) {
+        const currentTime = Date.now();
+        // Only fire if cooldown has elapsed
+        if (currentTime - this.lastFireTime > 1000 / (bot.stats?.attackSpeed || 0.5)) {
+          inputs.fire = true;
+          this.lastFireTime = currentTime;
+        }
+      }
+    }
+    // For non-player targets, consider firing at nearby players opportunistically
+    else if (this.state !== 'retreating') {
+      this.checkForFireOpportunities(bot, inputs);
     }
     
-    // Check for obstacles in exploration direction
-    const exploreTarget = {
-      x: me.position.x + Math.sin(this.exploreAngle) * 10,
-      z: me.position.z + Math.cos(this.exploreAngle) * 10
-    };
+    // Obstacle avoidance for all cases
+    this.avoidObstacles(bot, inputs, targetPosition);
     
-    const hasObstacle = this.checkForObstacle(me, exploreTarget);
+    return inputs;
+  }
+  
+  checkForFireOpportunities(bot, inputs) {
+    // Get bot range
+    const botRange = bot.stats?.range || 10;
     
-    if (hasObstacle) {
-      // Change direction if obstacle detected
-      this.exploreAngle = (this.exploreAngle + Math.PI/2 + Math.random() * Math.PI/2) % (Math.PI * 2);
-      this.exploreTimer = currentTime + 3000; // Shorter duration after obstacle
-    }
-    
-    // Move in exploration direction
-    this.rotateTowards(me, this.exploreAngle);
-    
-    this.sendInputs({
-      forward: true,
-      backward: false,
-      left: this.normalizeAngle(this.exploreAngle - me.rotation) < -0.05,
-      right: this.normalizeAngle(this.exploreAngle - me.rotation) > 0.05,
-      fire: shouldFire // Fire occasionally while exploring
+    Object.entries(this.gameState.players).forEach(([playerId, player]) => {
+      // Skip ourselves, dead players, and other bots
+      if (playerId === this.botId || !player.isAlive || playerId.startsWith('bot-')) return;
+      
+      const distance = this.calculateDistance(bot.position, player.position);
+      
+      // If player is in range, check if we're facing them
+      if (distance <= botRange) {
+        const angleToPlayer = Math.atan2(
+          player.position.x - bot.position.x,
+          player.position.z - bot.position.z
+        );
+        
+        let angleDiff = angleToPlayer - bot.rotation;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        // If we're facing the player, fire!
+        if (Math.abs(angleDiff) < 0.3) {
+          const currentTime = Date.now();
+          // Only fire if cooldown has elapsed
+          if (currentTime - this.lastFireTime > 1000 / (bot.stats?.attackSpeed || 0.5)) {
+            inputs.fire = true;
+            this.lastFireTime = currentTime;
+          }
+          return; // Only fire at one player at a time
+        }
+      }
     });
   }
   
-  // Move towards a target position
-  moveTowardsTarget(me, targetPosition, shouldFire) {
-    // Calculate angle to target
-    const targetAngle = Math.atan2(
-      targetPosition.x - me.position.x,
-      targetPosition.z - me.position.z
+  avoidObstacles(bot, inputs, targetPosition) {
+    // Ray casting for obstacle detection
+    const rayLength = 5; // Look 5 units ahead
+    const botDirection = new THREE.Vector3(
+      Math.sin(bot.rotation),
+      0,
+      Math.cos(bot.rotation)
     );
     
-    // Current angle of the bot
-    const currentAngle = me.rotation;
-    
-    // Calculate the normalized angle difference
-    const angleDiff = this.normalizeAngle(targetAngle - currentAngle);
-    
-    // Check for obstacles
-    const hasObstacle = this.checkForObstacle(me, targetPosition);
-    
-    if (hasObstacle) {
-      // If obstacle detected, activate avoidance mode
-      this.avoidanceTime = Date.now() + 1000;
+    // Check for obstacles directly ahead
+    let obstacleAhead = false;
+    Object.values(this.gameState.structures).forEach(structure => {
+      if (structure.destroyed) return;
       
-      // Choose a random direction to avoid
-      this.avoidanceDirection.left = Math.random() > 0.5;
-      this.avoidanceDirection.right = !this.avoidanceDirection.left;
-      
-      this.sendAvoidanceMovement(shouldFire);
-      return;
-    }
-    
-    // Send inputs based on angle difference
-    this.sendInputs({
-      forward: Math.abs(angleDiff) < 0.5, // Only move forward when roughly facing the target
-      backward: false,
-      left: angleDiff < -0.05,
-      right: angleDiff > 0.05,
-      fire: shouldFire
-    });
-  }
-  
-  // Rotate towards a specific angle
-  rotateTowards(me, targetAngle) {
-    const angleDiff = this.normalizeAngle(targetAngle - me.rotation);
-    
-    // Calculate rotation inputs
-    const left = angleDiff < -0.05;
-    const right = angleDiff > 0.05;
-    
-    return { left, right };
-  }
-  
-  // Normalize angle to range [-PI, PI]
-  normalizeAngle(angle) {
-    while (angle > Math.PI) angle -= 2 * Math.PI;
-    while (angle < -Math.PI) angle += 2 * Math.PI;
-    return angle;
-  }
-  
-  // Send inputs for random movement
-  sendRandomMovement(shouldFire) {
-    // If we don't have a set random direction or it's time to change
-    if (!this.randomMoveDirection.set || Math.random() < 0.03) {
-      this.randomMoveDirection = {
-        forward: Math.random() > 0.2, // 80% chance to move forward
-        backward: Math.random() < 0.1, // 10% chance to move backward
-        left: Math.random() > 0.5,
-        right: Math.random() < 0.5,
-        set: true
-      };
-      
-      // Avoid turning left and right simultaneously
-      if (this.randomMoveDirection.left && this.randomMoveDirection.right) {
-        this.randomMoveDirection.right = false;
-      }
-    }
-    
-    // Send the random inputs
-    this.sendInputs({
-      forward: this.randomMoveDirection.forward,
-      backward: this.randomMoveDirection.backward,
-      left: this.randomMoveDirection.left,
-      right: this.randomMoveDirection.right,
-      fire: shouldFire
-    });
-  }
-  
-  // Send inputs for obstacle avoidance
-  sendAvoidanceMovement(shouldFire) {
-    // Send the avoidance inputs
-    this.sendInputs({
-      forward: true,
-      backward: false,
-      left: this.avoidanceDirection.left,
-      right: this.avoidanceDirection.right,
-      fire: shouldFire
-    });
-  }
-  
-  // Check if there's an obstacle between the bot and a target
-  checkForObstacle(me, targetPosition) {
-    // Direction vector from bot to target
-    const direction = {
-      x: targetPosition.x - me.position.x,
-      z: targetPosition.z - me.position.z
-    };
-    
-    // Distance to target
-    const distance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
-    if (distance === 0) return false;
-    
-    // Normalize direction
-    direction.x /= distance;
-    direction.z /= distance;
-    
-    // Check other players as obstacles
-    for (const playerId in this.gameState.players) {
-      if (playerId === this.id) continue; // Ignore self
-      
-      const player = this.gameState.players[playerId];
-      if (!player.isAlive) continue; // Ignore dead players
-      
-      // Vector from bot to player
-      const toPlayer = {
-        x: player.position.x - me.position.x,
-        z: player.position.z - me.position.z
-      };
-      
-      // Distance to player
-      const playerDist = Math.sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
-      if (playerDist > distance) continue; // Player is farther than target
-      
-      // Projection of player vector onto direction
-      const dot = toPlayer.x * direction.x + toPlayer.z * direction.z;
-      if (dot <= 0) continue; // Player is behind us
-      
-      // Distance from player to line of sight
-      const projX = direction.x * dot;
-      const projZ = direction.z * dot;
-      const perpX = toPlayer.x - projX;
-      const perpZ = toPlayer.z - projZ;
-      const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
-      
-      // Adjust collision radius based on player scale
-      let collisionRadius = 1.5;
-      if (player.stats && player.stats.processorCounts) {
-        const totalProcessors = Object.values(player.stats.processorCounts).reduce((sum, count) => sum + count, 0);
-        collisionRadius *= (1 + (totalProcessors * 0.005));
-      }
-      
-      if (perpDist < collisionRadius) return true; // Obstacle detected
-    }
-    
-    // Check structures
-    for (const structureId in this.gameState.structures) {
-      const structure = this.gameState.structures[structureId];
-      if (structure.destroyed) continue; // Ignore destroyed structures
+      const structurePos = structure.position;
       
       // Vector from bot to structure
       const toStructure = {
-        x: structure.position.x - me.position.x,
-        z: structure.position.z - me.position.z
+        x: structurePos.x - bot.position.x,
+        y: 0,
+        z: structurePos.z - bot.position.z
       };
       
       // Distance to structure
-      const structDist = Math.sqrt(toStructure.x * toStructure.x + toStructure.z * toStructure.z);
-      if (structDist > distance) continue; // Structure is farther than target
+      const distanceToStructure = Math.sqrt(toStructure.x ** 2 + toStructure.z ** 2);
       
-      // Projection onto direction
-      const dot = toStructure.x * direction.x + toStructure.z * direction.z;
-      if (dot <= 0) continue; // Structure is behind us
+      // Collision radius
+      const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
       
-      // Distance from structure to line of sight
-      const projX = direction.x * dot;
-      const projZ = direction.z * dot;
-      const perpX = toStructure.x - projX;
-      const perpZ = toStructure.z - projZ;
-      const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
+      // Dot product to see if we're heading towards the structure
+      const dot = botDirection.x * toStructure.x + botDirection.z * toStructure.z;
       
-      // Different collision radius based on structure type
-      const collisionRadius = structure.type === 'waterTower' ? 5 : 
-                              structure.type === 'tree' ? 1.5 : 2;
-      
-      if (perpDist < collisionRadius) return true; // Obstacle detected
-    }
-    
-    // Check map boundaries
-    const mapRadius = 99; // Slightly less than actual 100 to be safe
-    
-    // Calculate if target is outside map bounds
-    const targetDistFromCenter = Math.sqrt(
-      targetPosition.x * targetPosition.x + 
-      targetPosition.z * targetPosition.z
-    );
-    
-    if (targetDistFromCenter > mapRadius) {
-      // Target is outside map, check if path crosses boundary
-      // Parametric line equation: me.position + t * direction = point on circle
-      // Solve for t: |me.position + t * direction|² = mapRadius²
-      
-      const a = direction.x * direction.x + direction.z * direction.z; // Should be 1 if normalized
-      const b = 2 * (me.position.x * direction.x + me.position.z * direction.z);
-      const c = me.position.x * me.position.x + me.position.z * me.position.z - mapRadius * mapRadius;
-      
-      // Discriminant of quadratic equation
-      const discriminant = b * b - 4 * a * c;
-      
-      if (discriminant >= 0) {
-        // Line intersects circle (map boundary)
-        return true;
-      }
-    }
-    
-    return false;
-  }
-  
-  // Calculate distance between two points
-  calculateDistance(a, b) {
-    return Math.sqrt(
-      Math.pow(b.x - a.x, 2) +
-      Math.pow(b.z - a.z, 2)
-    );
-  }
-  
-  // Handle game events
-  handleEvent(event, data) {
-    // React when taking damage
-    if (event === 'playerDamaged' && data.id === this.id) {
-      // If taking damage, enter random movement mode for 1 second
-      this.randomMoveTime = Date.now() + 1000;
-      // Reset random direction
-      this.randomMoveDirection.set = false;
-    }
-    
-    // React when killed
-    if (event === 'playerKilled' && data.id === this.id) {
-      this.isAlive = false;
-      this.deathCount++;
-      // Reset targeting and strategy
-      this.targetPlayerId = null;
-      this.aggressive = false;
-    }
-    
-    // If we killed someone
-    if (event === 'playerKilled' && data.killerId === this.id) {
-      this.killCount++;
-      // Briefly enter random movement to avoid getting stuck on dropped processors
-      this.randomMoveTime = Date.now() + 500;
-    }
-    
-    // If a processor is collected by someone else, remove from our map
-    if (event === 'processorCollected' && data.playerId !== this.id) {
-      this.collectibleMap.delete(data.id);
-    }
-    
-    // Update target when a player is killed
-    if (event === 'playerKilled' && this.targetPlayerId === data.id) {
-      this.targetPlayerId = null;
-      this.lastTargetCheck = 0; // Force immediate retargeting
-    }
-    
-    // When another player is damaged, potentially opportunistically switch targets
-    if (event === 'playerDamaged' && data.id !== this.id && this.aggressive) {
-      const player = this.gameState.players[data.id];
-      if (player && player.isAlive && player.hp / player.maxHp < 0.3) {
-        // Consider switching to this low-health target
-        const me = this.getMyState();
-        const distance = this.calculateDistance(me.position, player.position);
+      // If obstacle is close, in front of us, and we'd hit it soon
+      if (distanceToStructure < collisionRadius + 3 && dot > 0 && dot < rayLength) {
+        obstacleAhead = true;
         
-        // Only switch if in reasonable range and not currently executing an avoidance maneuver
-        if (distance < me.stats.range * 1.5 && Date.now() > this.avoidanceTime) {
-          this.targetPlayerId = data.id;
-          this.targetPriority = "weakened";
+        // Find avoidance direction
+        const rightVector = new THREE.Vector3(-botDirection.z, 0, botDirection.x);
+        
+        // Calculate which side has more room
+        const rightDot = rightVector.x * toStructure.x + rightVector.z * toStructure.z;
+        
+        // Turn away from obstacle
+        if (rightDot > 0) {
+          // Structure is to the right, turn left
+          inputs.left = true;
+          inputs.right = false;
+        } else {
+          // Structure is to the left, turn right
+          inputs.right = true;
+          inputs.left = false;
+        }
+        
+        // Slow down near obstacles
+        if (distanceToStructure < collisionRadius + 1) {
+          inputs.forward = false;
         }
       }
+    });
+    
+    // Also check for other players to avoid bumping into them
+    if (!obstacleAhead) {
+      Object.entries(this.gameState.players).forEach(([playerId, player]) => {
+        // Skip ourselves, dead players, and target (if we're attacking)
+        if (playerId === this.botId || !player.isAlive || 
+           (this.targetType === 'player' && playerId === this.target)) return;
+        
+        // Vector from bot to player
+        const toPlayer = {
+          x: player.position.x - bot.position.x,
+          y: 0,
+          z: player.position.z - bot.position.z
+        };
+        
+        // Distance to player
+        const distanceToPlayer = Math.sqrt(toPlayer.x ** 2 + toPlayer.z ** 2);
+        
+        // Dot product to see if we're heading towards the player
+        const dot = botDirection.x * toPlayer.x + botDirection.z * toPlayer.z;
+        
+        // Collision radius (player scale affects this)
+        let playerScale = 1.0;
+        if (player.stats && player.stats.processorCounts) {
+          const totalProcessors = Object.values(player.stats.processorCounts)
+            .reduce((sum, count) => sum + count, 0);
+          playerScale = 1.0 + (totalProcessors * 0.005);
+        }
+        
+        const collisionRadius = 0.75 * playerScale;
+        
+        // If player is close, in front of us, and we'd hit them soon
+        if (distanceToPlayer < collisionRadius + 2 && dot > 0 && dot < rayLength) {
+          // Find avoidance direction
+          const rightVector = new THREE.Vector3(-botDirection.z, 0, botDirection.x);
+          
+          // Calculate which side has more room
+          const rightDot = rightVector.x * toPlayer.x + rightVector.z * toPlayer.z;
+          
+          // Turn away from player
+          if (rightDot > 0) {
+            // Player is to the right, turn left
+            inputs.left = true;
+            inputs.right = false;
+          } else {
+            // Player is to the left, turn right
+            inputs.right = true;
+            inputs.left = false;
+          }
+          
+          // Slow down very close to players
+          if (distanceToPlayer < collisionRadius + 0.5) {
+            inputs.forward = false;
+          }
+        }
+      });
+    }
+  }
+  
+  estimateBotSideCannonCount(bot) {
+    // This is an approximation as we don't have access to the actual botSideCannons
+    // Try to estimate based on total processors - more processors likely means more side cannons
+    const totalProcessors = this.calculateTotalProcessors(bot);
+    
+    // Guessing cannons based on processors (adjust as needed)
+    if (totalProcessors > 50) return 4; // Likely has max cannons
+    if (totalProcessors > 30) return 3;
+    if (totalProcessors > 15) return 2;
+    if (totalProcessors > 5) return 1;
+    return 0;
+  }
+  
+  calculateDistance(pos1, pos2) {
+    if (!pos1 || !pos2) return Infinity;
+    
+    return Math.sqrt(
+      (pos2.x - pos1.x) ** 2 +
+      (pos2.y - pos1.y) ** 2 +
+      (pos2.z - pos1.z) ** 2
+    );
+  }
+  
+  handleEvent(event, data) {
+    // Process game events
+    switch (event) {
+      case 'playerDamaged':
+        if (data.id === this.botId) {
+          // We're being attacked, update danger level
+          this.dangerLevel += data.damage * 2;
+          
+          // If in collection mode and heavily damaged, switch to retreat
+          if (this.state === 'collecting' && data.hp < this.healthRetreatThreshold) {
+            this.state = 'retreating';
+            this.findRetreatDirection(this.gameState.players[this.botId]);
+          }
+          
+          // Try to identify attacker for counterattack later
+          if (data.attackerId) {
+            this.attackingPlayer = data.attackerId;
+          }
+        }
+        // If our target is getting attacked, opportunistically join in
+        else if (this.targetType === 'player' && data.id === this.target) {
+          // Target is even weaker now, maintain attack
+          this.lastTargetUpdateTime = Date.now(); // Reset timer to stick with this target
+        }
+        break;
+        
+      case 'playerKilled':
+        // If our target died, find a new one
+        if (this.targetType === 'player' && data.id === this.target) {
+          this.target = null;
+          this.targetType = null;
+          this.state = 'collecting'; // Default back to collecting
+          
+          // If we were the killer, gain a confidence boost
+          if (data.killerId === this.botId) {
+            this.dangerLevel = Math.max(0, this.dangerLevel - 20);
+          }
+        }
+        // If our attacker died, reduce danger
+        if (this.attackingPlayer === data.id) {
+          this.attackingPlayer = null;
+          this.dangerLevel = Math.max(0, this.dangerLevel - 15);
+        }
+        break;
+        
+      case 'processorCollected':
+        // If someone collected a processor we were heading for
+        if (this.targetType === 'processor' && data.id === this.target) {
+          this.target = null;
+          this.targetType = null;
+        }
+        break;
+        
+      case 'cannonCollected':
+        // If someone collected a cannon we were heading for
+        if (this.targetType === 'cannon' && data.id === this.target) {
+          this.target = null;
+          this.targetType = null;
+        }
+        break;
+        
+      case 'structureDestroyed':
+        // Update internal state if needed
+        break;
     }
   }
 }
-
-module.exports = AdvancedBot;
