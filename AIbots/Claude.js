@@ -1,6 +1,15 @@
 const THREE = require('three');
 
+/**
+ * DominanceBot - An advanced battle bot for Robot Warfare
+ */
 class DominanceBot {
+  /**
+   * Constructor for the DominanceBot
+   * @param {string} botId - Unique identifier for this bot
+   * @param {object} gameState - Current state of the game
+   * @param {function} sendInputs - Function to send input commands
+   */
   constructor(botId, gameState, sendInputs) {
     this.botId = botId;
     this.gameState = gameState;
@@ -33,11 +42,13 @@ class DominanceBot {
       'attackSpeed': 0.9,
       'speed': 0.8,
       'repairSpeed': 0.7
-    }
-
-module.exports = DominanceBot;;
+    };
   }
   
+  /**
+   * Main update method called by the bot manager
+   * @param {object} gameState - Current state of the game
+   */
   update(gameState) {
     // Update our reference to the game state
     this.gameState = gameState;
@@ -77,6 +88,9 @@ module.exports = DominanceBot;;
     this.lastPosition = {...bot.position};
   }
 
+  /**
+   * Detect if the bot is stuck and can't move
+   */
   detectIfStuck(bot) {
     if (this.lastPosition) {
       const distance = this.calculateDistance(this.lastPosition, bot.position);
@@ -94,6 +108,9 @@ module.exports = DominanceBot;;
     }
   }
 
+  /**
+   * Choose a random direction when stuck
+   */
   chooseRandomDirection(bot) {
     // Create a random direction to move in
     const angle = Math.random() * Math.PI * 2;
@@ -110,11 +127,17 @@ module.exports = DominanceBot;;
     this.state = 'collecting'; // Reset state
   }
   
+  /**
+   * Calculate total processors collected
+   */
   calculateTotalProcessors(bot) {
     if (!bot.stats || !bot.stats.processorCounts) return 0;
     return Object.values(bot.stats.processorCounts).reduce((sum, count) => sum + count, 0);
   }
   
+  /**
+   * Check if bot is under attack
+   */
   checkIfUnderAttack(bot) {
     // Check if health decreased since last update
     if (bot.hp < this.lastHealth) {
@@ -131,6 +154,9 @@ module.exports = DominanceBot;;
     this.detectNearbyPlayers(bot);
   }
   
+  /**
+   * Detect if players are nearby
+   */
   detectNearbyPlayers(bot) {
     let nearestEnemyDistance = Infinity;
     let nearestEnemyId = null;
@@ -156,6 +182,9 @@ module.exports = DominanceBot;;
     }
   }
   
+  /**
+   * Update bot state based on situation
+   */
   updateState(bot, totalProcessors) {
     const healthPercent = (bot.hp / bot.maxHp) * 100;
     
@@ -192,6 +221,9 @@ module.exports = DominanceBot;;
     }
   }
   
+  /**
+   * Check if player target is valid
+   */
   isValidPlayerTarget(targetId) {
     if (!targetId || this.targetType !== 'player') return false;
     
@@ -199,6 +231,9 @@ module.exports = DominanceBot;;
     return player && player.isAlive;
   }
   
+  /**
+   * Choose a target based on current state
+   */
   chooseTarget(bot, totalProcessors) {
     // Reset target if needed
     if (this.targetType === 'processor' && !this.gameState.processors[this.target]) {
@@ -233,6 +268,9 @@ module.exports = DominanceBot;;
     }
   }
   
+  /**
+   * Find the best collectible target (processor or cannon)
+   */
   findCollectibleTarget(bot, totalProcessors) {
     // Choose what to prioritize based on current stats
     const processorPriorities = this.calculateProcessorPriorities(bot, totalProcessors);
@@ -291,6 +329,9 @@ module.exports = DominanceBot;;
     }
   }
   
+  /**
+   * Calculate priorities for different processor types
+   */
   calculateProcessorPriorities(bot, totalProcessors) {
     // Start with base priorities
     const priorities = {...this.processorPriorities};
@@ -318,6 +359,9 @@ module.exports = DominanceBot;;
     return priorities;
   }
   
+  /**
+   * Calculate penalty for paths near obstacles
+   */
   calculateObstaclePenalty(startPos, endPos) {
     let penalty = 0;
     
@@ -362,6 +406,9 @@ module.exports = DominanceBot;;
     return penalty;
   }
   
+  /**
+   * Find potential player targets to attack
+   */
   findPotentialPlayerTargets(bot, totalProcessors) {
     const potentialTargets = [];
     
@@ -397,6 +444,9 @@ module.exports = DominanceBot;;
     return potentialTargets.sort((a, b) => b.score - a.score);
   }
   
+  /**
+   * Find a player to attack
+   */
   findPlayerTarget(bot, totalProcessors) {
     const potentialTargets = this.findPotentialPlayerTargets(bot, totalProcessors);
     
@@ -411,6 +461,9 @@ module.exports = DominanceBot;;
     }
   }
   
+  /**
+   * Find a direction to retreat to
+   */
   findRetreatDirection(bot) {
     // If we know who's attacking us, move away from them
     if (this.attackingPlayer && this.gameState.players[this.attackingPlayer]) {
@@ -485,11 +538,14 @@ module.exports = DominanceBot;;
     }
   }
   
+  /**
+   * Find a flanking position around a player
+   */
   findFlankingPosition(bot) {
     if (this.targetType !== 'player' || !this.gameState.players[this.target]) {
       // If no valid player target, revert to attacking or collecting
       this.state = 'collecting';
-      this.findCollectibleTarget(bot, totalProcessors);
+      this.findCollectibleTarget(bot, this.calculateTotalProcessors(bot));
       return;
     }
     
@@ -526,6 +582,9 @@ module.exports = DominanceBot;;
     this.targetType = 'position';
   }
   
+  /**
+   * Generate movement and attack inputs
+   */
   generateInputs(bot) {
     const inputs = {
       forward: false,
@@ -625,6 +684,9 @@ module.exports = DominanceBot;;
     return inputs;
   }
   
+  /**
+   * Check for opportunities to fire at nearby players
+   */
   checkForFireOpportunities(bot, inputs) {
     // Get bot range
     const botRange = bot.stats?.range || 10;
@@ -660,6 +722,9 @@ module.exports = DominanceBot;;
     });
   }
   
+  /**
+   * Avoid obstacles in path
+   */
   avoidObstacles(bot, inputs, targetPosition) {
     // Ray casting for obstacle detection
     const rayLength = 5; // Look 5 units ahead
@@ -778,6 +843,9 @@ module.exports = DominanceBot;;
     }
   }
   
+  /**
+   * Estimate how many side cannons the bot has
+   */
   estimateBotSideCannonCount(bot) {
     // This is an approximation as we don't have access to the actual botSideCannons
     // Try to estimate based on total processors - more processors likely means more side cannons
@@ -791,6 +859,9 @@ module.exports = DominanceBot;;
     return 0;
   }
   
+  /**
+   * Calculate distance between two positions
+   */
   calculateDistance(pos1, pos2) {
     if (!pos1 || !pos2) return Infinity;
     
@@ -801,6 +872,9 @@ module.exports = DominanceBot;;
     );
   }
   
+  /**
+   * Handle game events
+   */
   handleEvent(event, data) {
     // Process game events
     switch (event) {
@@ -868,3 +942,5 @@ module.exports = DominanceBot;;
     }
   }
 }
+
+module.exports = DominanceBot;
