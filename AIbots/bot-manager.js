@@ -311,8 +311,7 @@ class BotManager {
       type: processorType,
       playerId: botId
     });
-    
-    console.log(`Bot ${botId} a collecté un processeur de type ${processorType}`);
+
   }
   
   // Méthode pour recevoir les inputs d'un bot et les stocker
@@ -800,11 +799,7 @@ class BotManager {
 		};
 	  }
 	  
-	  // AJOUT: Log de débogage pour vérifier la position du projectile
-	  console.log(`Bot projectile position: (${projectilePosition.x.toFixed(2)}, ${projectilePosition.y.toFixed(2)}, ${projectilePosition.z.toFixed(2)})`);
-	  console.log(`Bot position: (${botPosition.x.toFixed(2)}, ${botPosition.y.toFixed(2)}, ${botPosition.z.toFixed(2)})`);
-	  console.log(`Direction: (${botDirection.x.toFixed(2)}, ${botDirection.y.toFixed(2)}, ${botDirection.z.toFixed(2)})`);
-	  
+  
 	  const currentTime = Date.now();
 	  
 	  // Ajouter le projectile à l'état du jeu
