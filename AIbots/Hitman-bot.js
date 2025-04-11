@@ -12,7 +12,7 @@ class HunterBot {
     // État non persistant
     this.targetPosition = null;       // Position de la cible actuelle
     this.lastPathUpdateTime = 0;      // Dernier moment où on a mis à jour le chemin
-    this.pathUpdateInterval = 10;    // Intervalle de mise à jour du chemin en ms
+    this.pathUpdateInterval = 50;    // Intervalle de mise à jour du chemin en ms
     
     console.log(`[HunterBot ${this.id}] Initialized`);
   }
