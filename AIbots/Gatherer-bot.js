@@ -11,7 +11,7 @@ class SimpleBot {
     this.isAlive = true;
     
     // Paramètres de comportement
-    this.shootCooldown = 3000; // 3 secondes entre les tirs
+    this.shootCooldown = 30000; // 30 secondes entre les tirs
     this.lastShootTime = 0;
     this.randomMoveTime = 0; // Temps pendant lequel faire des mouvements aléatoires
     this.randomMoveDirection = { left: false, right: false };
