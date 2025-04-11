@@ -12,7 +12,7 @@ class HunterBot {
     // État non persistant
     this.targetPosition = null;       // Position de la cible actuelle
     this.lastPathUpdateTime = 0;      // Dernier moment où on a mis à jour le chemin
-    this.pathUpdateInterval = 50;    // Intervalle de mise à jour du chemin en ms
+    this.pathUpdateInterval = 10;    // Intervalle de mise à jour du chemin en ms
     
     console.log(`[HunterBot ${this.id}] Initialized`);
   }
@@ -83,6 +83,7 @@ class HunterBot {
       this.targetId = this.findClosestCannon();
       if (this.targetId) {
         this.targetPosition = this.gameState.cannons[this.targetId].position;
+        console.log(`[HunterBot ${this.id}] Targeting cannon ${this.targetId}`);
       }
     } else {
       this.targetId = this.findClosestPlayer();
@@ -171,16 +172,40 @@ class HunterBot {
       fire: false
     };
     
-    // Rotation : utiliser left/right pour s'aligner avec la cible
-    if (angleDifference > 0.1) {
-      inputs.left = true;
-    } else if (angleDifference < -0.1) {
-      inputs.right = true;
-    }
+    // Détection d'obstacles
+    const obstacleInfo = this.detectObstaclesAhead(bot);
     
-    // Avancer vers la cible si on est à peu près dans la bonne direction
-    if (Math.abs(angleDifference) < Math.PI / 2) {
-      inputs.forward = true;
+    if (obstacleInfo.hasObstacle) {
+      // Stratégie d'évitement d'obstacles
+      if (obstacleInfo.side === 'left') {
+        // Obstacle à gauche, tourner à droite
+        inputs.right = true;
+      } else {
+        // Obstacle à droite, tourner à gauche
+        inputs.left = true;
+      }
+      
+      // Si l'obstacle est trop proche, reculer légèrement
+      if (obstacleInfo.distance < 1.5) {
+        inputs.backward = true;
+      } else {
+        // Sinon, continuer d'avancer mais en tournant
+        inputs.forward = true;
+      }
+    } else {
+      // Pas d'obstacle, navigation normale
+      
+      // Rotation : utiliser left/right pour s'aligner avec la cible
+      if (angleDifference > 0.1) {
+        inputs.left = true;
+      } else if (angleDifference < -0.1) {
+        inputs.right = true;
+      }
+      
+      // Avancer vers la cible si on est à peu près dans la bonne direction
+      if (Math.abs(angleDifference) < Math.PI / 2) {
+        inputs.forward = true;
+      }
     }
     
     // Calculer la distance à la cible
@@ -193,6 +218,96 @@ class HunterBot {
     
     // Envoyer les inputs au serveur
     this.sendInputs(inputs);
+  }
+  
+  // Détecter les obstacles devant le bot
+  detectObstaclesAhead(bot) {
+    const result = {
+      hasObstacle: false,
+      distance: Infinity,
+      side: 'center'  // 'left', 'right', ou 'center'
+    };
+    
+    // Distance de détection
+    const detectionRange = 5;
+    
+    // Vérifier les structures (obstacles statiques)
+    for (const structureId in this.gameState.structures) {
+      const structure = this.gameState.structures[structureId];
+      if (structure.destroyed) continue;
+      
+      const distance = this.calculateDistance(bot.position, structure.position);
+      
+      // Si l'obstacle est trop loin, l'ignorer
+      if (distance > detectionRange) continue;
+      
+      // Calculer l'angle relatif vers l'obstacle
+      const angleToObstacle = Math.atan2(
+        structure.position.z - bot.position.z,
+        structure.position.x - bot.position.x
+      );
+      
+      // Angle actuel du bot
+      const currentAngle = Math.atan2(bot.direction.z, bot.direction.x);
+      
+      // Différence d'angle (normalisée entre -PI et PI)
+      let angleDifference = angleToObstacle - currentAngle;
+      while (angleDifference > Math.PI) angleDifference -= 2 * Math.PI;
+      while (angleDifference < -Math.PI) angleDifference += 2 * Math.PI;
+      
+      // Obstacle devant (angle relatif inférieur à 60 degrés)
+      if (Math.abs(angleDifference) < Math.PI / 3) {
+        // Si c'est l'obstacle le plus proche jusqu'à présent
+        if (distance < result.distance) {
+          result.hasObstacle = true;
+          result.distance = distance;
+          result.side = angleDifference > 0 ? 'left' : 'right';
+        }
+      }
+    }
+    
+    // Vérifier aussi les autres joueurs comme obstacles potentiels
+    for (const playerId in this.gameState.players) {
+      // Ignorer le bot lui-même
+      if (playerId === this.id) continue;
+      
+      const player = this.gameState.players[playerId];
+      if (!player.isAlive) continue;
+      
+      // Si c'est la cible actuelle en mode chasse, ne pas l'éviter
+      if (this.state === 'HUNTING_PLAYERS' && playerId === this.targetId) continue;
+      
+      const distance = this.calculateDistance(bot.position, player.position);
+      
+      // Si l'obstacle est trop loin, l'ignorer
+      if (distance > detectionRange) continue;
+      
+      // Calculer l'angle relatif vers l'obstacle
+      const angleToObstacle = Math.atan2(
+        player.position.z - bot.position.z,
+        player.position.x - bot.position.x
+      );
+      
+      // Angle actuel du bot
+      const currentAngle = Math.atan2(bot.direction.z, bot.direction.x);
+      
+      // Différence d'angle
+      let angleDifference = angleToObstacle - currentAngle;
+      while (angleDifference > Math.PI) angleDifference -= 2 * Math.PI;
+      while (angleDifference < -Math.PI) angleDifference += 2 * Math.PI;
+      
+      // Obstacle devant (angle relatif inférieur à 60 degrés)
+      if (Math.abs(angleDifference) < Math.PI / 3) {
+        // Si c'est l'obstacle le plus proche jusqu'à présent
+        if (distance < result.distance) {
+          result.hasObstacle = true;
+          result.distance = distance;
+          result.side = angleDifference > 0 ? 'left' : 'right';
+        }
+      }
+    }
+    
+    return result;
   }
   
   // Se déplacer aléatoirement
