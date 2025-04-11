@@ -189,9 +189,6 @@ function startGameCycle() {
   
   // Planifier la fin de la partie
   setTimeout(() => {
-    // Arrêter les mises à jour des bots
-    clearInterval(botUpdateInterval);  
-    botManager.cleanupBots();
     
     endGame();
   }, timeToEnd); // Utiliser le temps calculé, pas GAME_DURATION directement
@@ -227,7 +224,10 @@ function prepareRestart() {
   io.emit('gameRestarting', {
     duration: RESTART_DURATION
   });
-  
+    // Arrêter les mises à jour des bots
+    clearInterval(botUpdateInterval);  
+    botManager.cleanupBots();
+	
   // Planifier le redémarrage effectif
   setTimeout(() => {
     restartGame();
@@ -420,8 +420,9 @@ function spawnProcessors() {
 	// Position aléatoire dans 90% du rayon de la carte autour du château d'eau
 	const angle = Math.random() * Math.PI * 2;
 	const mapRadius = MAP_BOUNDS.radius; // Rayon total de la carte
+	const minSpawnRadius = 5;
 	const maxSpawnRadius = mapRadius * 0.9; // 90% du rayon
-	const radius = Math.random() * maxSpawnRadius;
+	const radius = minSpawnRadius + Math.random() * (maxSpawnRadius-minSpawnRadius);
 	const x = Math.cos(angle) * radius;
 	const z = Math.sin(angle) * radius;
 	const y = 0.5; // Hauteur augmentée pour meilleure visibilité
@@ -523,13 +524,13 @@ function spawnDroppedProcessors(playerId, position) {
       // Position aléatoire autour du joueur mort
       const randomOffset = {
         x: (Math.random() - 0.5) * 2,
-        y: 0.2,
+        y: 0,
         z: (Math.random() - 0.5) * 2
       };
       
       const processorPosition = {
         x: position.x + randomOffset.x,
-        y: 0 + randomOffset.y,
+        y: 0.5 + randomOffset.y,
         z: position.z + randomOffset.z
       };
       
