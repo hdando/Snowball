@@ -176,6 +176,12 @@ class HunterBot {
     const obstacleInfo = this.detectObstaclesAhead(bot);
     
     if (obstacleInfo.hasObstacle) {
+      // MODIFICATION: Tirer si l'obstacle est un robot ou un arbre
+      if (obstacleInfo.type === 'player' || obstacleInfo.type === 'tree') {
+        inputs.fire = true;
+        console.log(`[HunterBot ${this.id}] Shooting at ${obstacleInfo.type}`);
+      }
+      
       // Stratégie d'évitement d'obstacles
       if (obstacleInfo.side === 'left') {
         // Obstacle à gauche, tourner à droite
@@ -225,7 +231,8 @@ class HunterBot {
     const result = {
       hasObstacle: false,
       distance: Infinity,
-      side: 'center'  // 'left', 'right', ou 'center'
+      side: 'center',  // 'left', 'right', ou 'center'
+      type: null       // MODIFICATION: Ajouter le type d'obstacle
     };
     
     // Distance de détection
@@ -262,6 +269,9 @@ class HunterBot {
           result.hasObstacle = true;
           result.distance = distance;
           result.side = angleDifference > 0 ? 'left' : 'right';
+          
+          // MODIFICATION: Identifier le type d'obstacle
+          result.type = structure.type || 'structure';
         }
       }
     }
@@ -303,6 +313,9 @@ class HunterBot {
           result.hasObstacle = true;
           result.distance = distance;
           result.side = angleDifference > 0 ? 'left' : 'right';
+          
+          // MODIFICATION: Identifier comme joueur
+          result.type = 'player';
         }
       }
     }
