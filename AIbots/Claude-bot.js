@@ -79,7 +79,6 @@ class DominanceBot {
     this.checkIfUnderAttack(bot);
     
     // Only update target periodically for performance
-    const currentTime = Date.now();
     if (currentTime - this.lastTargetUpdateTime > this.targetUpdateInterval || !this.target) {
       // Determine our state based on health and situation
       this.updateState(bot, totalProcessors);
