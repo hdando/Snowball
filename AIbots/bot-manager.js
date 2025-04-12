@@ -477,9 +477,7 @@ class BotManager {
     
     // Traiter les inputs de chaque bot et les appliquer
     this.processBotInputs();
-    
-    // Vérifier si les bots sont bloqués
-    this.checkForStuckBots();
+
   }
   
   // Calcule la distance entre 2 positions en utilisant Three.js
@@ -854,80 +852,6 @@ class BotManager {
 		range: bot.stats?.range || 10
 	  });
 	}
-  // Vérifier si des bots sont bloqués
-  checkForStuckBots() {
-    Object.keys(this.botInstances).forEach(botId => {
-      const bot = this.gameState.players[botId];
-      if (!bot || !bot.isAlive) return;
-      
-      // Vérifier si le bot a bougé depuis la dernière mise à jour
-      if (this.lastPositions[botId]) {
-        const lastPos = this.lastPositions[botId];
-        const currentPos = bot.position;
-        
-        // Utiliser Three.js pour calculer la distance
-        const lastVector = new THREE.Vector3(lastPos.x, lastPos.y, lastPos.z);
-        const currentVector = new THREE.Vector3(currentPos.x, currentPos.y, currentPos.z);
-        
-        const distance = lastVector.distanceTo(currentVector);
-        
-        // Si la distance est très petite, le bot est peut-être bloqué
-        if (distance < 0.01) {
-          this.stuckCounters[botId]++;
-          
-          // Si le bot est bloqué depuis trop longtemps, forcer un mouvement aléatoire
-          if (this.stuckCounters[botId] > 1000) {
-            console.log(`Bot ${botId} semble bloqué, application d'un mouvement aléatoire`);
-            this.applyRandomMovement(botId);
-            this.stuckCounters[botId] = 0;
-          }
-        } else {
-          // Réinitialiser le compteur s'il a bougé
-          this.stuckCounters[botId] = 0;
-        }
-      }
-      
-      // Stocker la position actuelle pour la prochaine vérification
-      this.lastPositions[botId] = {...bot.position};
-    });
-  }
-  
-  // Appliquer un mouvement aléatoire à un bot bloqué
-  applyRandomMovement(botId) {
-    const bot = this.gameState.players[botId];
-    if (!bot) return;
-    
-    // Générer une nouvelle direction aléatoire avec Three.js
-    const randomAngle = Math.random() * Math.PI * 2;
-    const newDirection = new THREE.Vector3(
-      Math.sin(randomAngle),
-      0,
-      Math.cos(randomAngle)
-    );
-    
-    // Appliquer la nouvelle direction et rotation
-    bot.rotation = randomAngle;
-    bot.direction = {
-      x: newDirection.x,
-      y: newDirection.y,
-      z: newDirection.z
-    };
-    
-    // Forcer un mouvement dans cette direction (vitesse boostée pour s'échapper)
-    const botSpeed = bot.stats?.speed || 0.02;
-    const moveVector = newDirection.clone().multiplyScalar(botSpeed * 10);
-    
-    bot.position.x += moveVector.x;
-    bot.position.z += moveVector.z;
-    
-    // Informer les clients
-    this.io.emit('playerMoved', {
-      id: botId,
-      position: bot.position,
-      rotation: bot.rotation,
-      direction: bot.direction
-    });
-  }
   
   // Notifier les bots des événements du jeu
   notifyBots(event, data) {
