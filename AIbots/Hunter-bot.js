@@ -1,466 +1,479 @@
-class HunterBot {
-  constructor(id, gameState, sendInputs) {
-    this.id = id;                // ID unique du bot
-    this.gameState = gameState;  // Référence à l'état du jeu
-    this.sendInputs = sendInputs; // Fonction pour envoyer les inputs
+class AdvancedBot {
+  constructor(botId, gameState, sendInputs) {
+    // Propriétés de base
+    this.id = botId;
+    this.gameState = gameState;
+    this.sendInputs = sendInputs;
     
-    // État interne du bot
-    this.state = 'COLLECTING_CANNONS'; // Deux états: COLLECTING_CANNONS ou HUNTING_PLAYERS
-    this.targetId = null;              // ID de la cible (canon ou joueur)
-    this.targetType = null;            // 'cannon', 'processor', ou 'player'
-    this.collectedCannons = 0;         // Compteur de canons collectés
+    // États du bot
+    this.BEHAVIOR = {
+      COLLECTING_PROCESSORS: 'collecting_processors',
+      COLLECTING_CANNONS: 'collecting_cannons',
+      HUNTING: 'hunting'
+    };
     
-    // État non persistant
-    this.targetPosition = null;       // Position de la cible actuelle
-    this.lastPathUpdateTime = 0;      // Dernier moment où on a mis à jour le chemin
-    this.pathUpdateInterval = 100;    // Intervalle de mise à jour du chemin en ms
+    // État initial
+    this.currentBehavior = this.BEHAVIOR.COLLECTING_PROCESSORS;
     
-    console.log(`[HunterBot ${this.id}] Initialized`);
+    // Compteurs et suivi
+    this.processorCount = 0;
+    this.cannonCount = 0;
+    
+    // Autres propriétés
+    this.lastUpdateTime = Date.now();
+    this.updateInterval = 100;
+    this.isAlive = true;
+    this.shootCooldown = 3000; // Normal en mode collecte
+    this.lastShootTime = 0;
+    this.randomMoveTime = 0;
+    this.randomMoveDirection = { left: false, right: false };
+    
+    // Propriétés spécifiques à la chasse
+    this.currentTarget = null;
+    this.targetUpdateTime = 0;
+    this.targetUpdateInterval = 2000; // Mettre à jour la cible toutes les 2 secondes
+    
+    console.log(`AdvancedBot initialized with ID: ${this.id}`);
   }
   
   update(gameState) {
-    // Mettre à jour la référence à l'état du jeu
+    // Mise à jour de l'état du jeu
     this.gameState = gameState;
     
-    // Récupérer le bot depuis l'état du jeu
-    const bot = gameState.players[this.id];
-    if (!bot || !bot.isAlive) return;
+    // Obtenir mon état actuel
+    const me = this.getMyState();
+    if (!me || !me.isAlive) {
+      this.sendInputs({
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        fire: false
+      });
+      return;
+    }
     
-    // Mettre à jour le contexte
+    // Mettre à jour les compteurs depuis l'état du jeu
+    this.updateCounters(me);
+    
+    // Mettre à jour le comportement en fonction des compteurs
+    this.updateBehavior();
+    
     const currentTime = Date.now();
-    const shouldUpdatePath = currentTime - this.lastPathUpdateTime > this.pathUpdateInterval;
     
-    // Logique principale basée sur l'état
-    if (this.state === 'COLLECTING_CANNONS' && this.collectedCannons >= 4) {
-      // Transition vers l'état de chasse aux joueurs
-      this.state = 'HUNTING_PLAYERS';
-      this.targetId = null;
-      this.targetType = null;
-      this.targetPosition = null;
-      console.log(`[HunterBot ${this.id}] Switching to HUNTING_PLAYERS mode`);
+    // Décider si on tire (tous les X secondes)
+    const shouldFire = currentTime - this.lastShootTime > this.shootCooldown;
+    if (shouldFire) {
+      this.lastShootTime = currentTime;
     }
     
-    // Choisir une cible si nécessaire ou mettre à jour la position de la cible actuelle
-    if (!this.targetId || !this.isTargetValid() || shouldUpdatePath) {
-      this.chooseTarget();
-      this.lastPathUpdateTime = currentTime;
+    // Si on est en mode mouvement aléatoire (après collision)
+    if (currentTime < this.randomMoveTime) {
+      this.sendRandomMovement(shouldFire);
+      return;
     }
     
-    // Si une cible est définie, se diriger vers elle et agir en conséquence
-    if (this.targetId && this.targetPosition) {
-      this.moveTowardsTarget(bot);
+    // Logique en fonction du comportement actuel
+    switch (this.currentBehavior) {
+      case this.BEHAVIOR.COLLECTING_PROCESSORS:
+        this.behaviorCollectProcessors(me, shouldFire);
+        break;
+      case this.BEHAVIOR.COLLECTING_CANNONS:
+        this.behaviorCollectCannons(me, shouldFire);
+        break;
+      case this.BEHAVIOR.HUNTING:
+        this.behaviorHunt(me, shouldFire);
+        break;
+    }
+  }
+  
+  // Récupérer l'état actuel du bot
+  getMyState() {
+    return this.gameState.players[this.id];
+  }
+  
+  // Mettre à jour les compteurs
+  updateCounters(me) {
+    if (me.stats && me.stats.processorCounts) {
+      this.processorCount = Object.values(me.stats.processorCounts).reduce((sum, count) => sum + count, 0);
+    }
+    
+    // Le nombre de canons est géré via handleEvent
+  }
+  
+  // Mettre à jour le comportement
+  updateBehavior() {
+    if (this.currentBehavior === this.BEHAVIOR.COLLECTING_PROCESSORS && this.processorCount >= 50) {
+      this.currentBehavior = this.BEHAVIOR.COLLECTING_CANNONS;
+      console.log(`Bot ${this.id} passe en mode collecte de canons`);
+    } else if (this.currentBehavior === this.BEHAVIOR.COLLECTING_CANNONS && this.cannonCount >= 4) {
+      this.currentBehavior = this.BEHAVIOR.HUNTING;
+      console.log(`Bot ${this.id} passe en mode chasse`);
       
-      // Si on chasse un joueur, lui tirer dessus quand on est assez proche
-      if (this.state === 'HUNTING_PLAYERS') {
-        this.shootAtTarget(bot);
-      }
-    } else {
-      // Pas de cible, juste se déplacer aléatoirement
-      this.moveRandomly();
+      // Réduire le cooldown de tir pour être plus agressif en mode chasse
+      this.shootCooldown = 1000; // 1 seconde
     }
   }
   
-  // Vérifier si la cible est toujours valide et mettre à jour sa position
-  isTargetValid() {
-    if (this.state === 'COLLECTING_CANNONS') {
-      if (this.targetType === 'cannon') {
-        const cannon = this.gameState.cannons[this.targetId];
-        if (cannon) {
-          this.targetPosition = cannon.position;
-          return true;
-        }
-        return false;
-      } else if (this.targetType === 'processor') {
-        const processor = this.gameState.processors[this.targetId];
-        if (processor) {
-          this.targetPosition = processor.position;
-          return true;
-        }
-        return false;
-      }
-      return false;
+  // Comportement: collecter des processeurs
+  behaviorCollectProcessors(me, shouldFire) {
+    // Trouver le processeur le plus proche
+    const closestProcessor = this.findClosestProcessor(me.position);
+    
+    if (closestProcessor) {
+      // On a trouvé un processeur, se diriger vers lui
+      this.moveTowardsTarget(me, closestProcessor.position, shouldFire);
     } else {
-      // Mode HUNTING_PLAYERS
-      const target = this.gameState.players[this.targetId];
-      if (target && target.isAlive && this.targetId !== this.id) {
-        this.targetPosition = target.position;
-        return true;
-      }
-      return false;
+      // Aucun processeur trouvé, faire un mouvement aléatoire
+      this.sendRandomMovement(shouldFire);
     }
   }
   
-  // Choisir une nouvelle cible en fonction de l'état
-  chooseTarget() {
-    if (this.state === 'COLLECTING_CANNONS') {
-      // D'abord essayer de trouver un canon
-      this.targetId = this.findClosestCannon();
-      if (this.targetId) {
-        this.targetType = 'cannon';
-        this.targetPosition = this.gameState.cannons[this.targetId].position;
-        console.log(`[HunterBot ${this.id}] Targeting cannon ${this.targetId}`);
+  // Comportement: collecter des canons
+  behaviorCollectCannons(me, shouldFire) {
+    // Trouver le canon le plus proche
+    const closestCannon = this.findClosestCannon(me.position);
+    
+    if (closestCannon) {
+      // On a trouvé un canon, se diriger vers lui
+      this.moveTowardsTarget(me, closestCannon.position, shouldFire);
+    } else {
+      // Aucun canon trouvé, chercher des processeurs comme backup
+      const closestProcessor = this.findClosestProcessor(me.position);
+      
+      if (closestProcessor) {
+        this.moveTowardsTarget(me, closestProcessor.position, shouldFire);
       } else {
-        // Si aucun canon n'est trouvé, chercher un processeur
-        this.targetId = this.findClosestProcessor();
-        if (this.targetId) {
-          this.targetType = 'processor';
-          this.targetPosition = this.gameState.processors[this.targetId].position;
-          console.log(`[HunterBot ${this.id}] Targeting processor ${this.targetId}`);
-        }
-      }
-    } else {
-      // Mode chasse de joueurs
-      this.targetId = this.findClosestPlayer();
-      if (this.targetId) {
-        this.targetType = 'player';
-        this.targetPosition = this.gameState.players[this.targetId].position;
-        console.log(`[HunterBot ${this.id}] Targeting player ${this.targetId}`);
+        this.sendRandomMovement(shouldFire);
       }
     }
   }
   
-  // Trouver le canon le plus proche
-  findClosestCannon() {
-    const bot = this.gameState.players[this.id];
-    if (!bot) return null;
+  // Comportement: chasser les autres joueurs
+  behaviorHunt(me, shouldFire) {
+    const currentTime = Date.now();
     
-    let closestCannonId = null;
-    let minDistance = Infinity;
-    
-    for (const cannonId in this.gameState.cannons) {
-      const cannon = this.gameState.cannons[cannonId];
-      const distance = this.calculateDistance(
-        bot.position,
-        cannon.position
-      );
+    // Mettre à jour la cible périodiquement
+    if (!this.currentTarget || currentTime - this.targetUpdateTime > this.targetUpdateInterval) {
+      const newTarget = this.findClosestPlayer(me);
       
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestCannonId = cannonId;
+      if (newTarget) {
+        this.currentTarget = {
+          id: newTarget.id,
+          position: { ...newTarget.position },
+          lastSeen: currentTime
+        };
+        this.targetUpdateTime = currentTime;
+      } else {
+        this.currentTarget = null;
       }
     }
     
-    return closestCannonId;
+    // Vérifier si la cible existe toujours
+    if (this.currentTarget) {
+      const targetPlayer = this.gameState.players[this.currentTarget.id];
+      
+      if (targetPlayer && targetPlayer.isAlive) {
+        // Mettre à jour la position connue de la cible
+        this.currentTarget.position = { ...targetPlayer.position };
+        this.currentTarget.lastSeen = currentTime;
+        
+        // Poursuivre la cible
+        this.moveTowardsTarget(me, this.currentTarget.position, shouldFire, true);
+      } else {
+        // La cible n'existe plus ou est morte
+        this.currentTarget = null;
+      }
+    }
+    
+    // Si pas de cible, chercher un processeur ou faire un mouvement aléatoire
+    if (!this.currentTarget) {
+      const closestProcessor = this.findClosestProcessor(me.position);
+      
+      if (closestProcessor) {
+        this.moveTowardsTarget(me, closestProcessor.position, shouldFire);
+      } else {
+        this.sendRandomMovement(shouldFire);
+      }
+    }
   }
   
   // Trouver le processeur le plus proche
-  findClosestProcessor() {
-    const bot = this.gameState.players[this.id];
-    if (!bot) return null;
+  findClosestProcessor(position) {
+    const processors = Object.values(this.gameState.processors || {});
     
-    let closestProcessorId = null;
-    let minDistance = Infinity;
-    
-    for (const processorId in this.gameState.processors) {
-      const processor = this.gameState.processors[processorId];
-      const distance = this.calculateDistance(
-        bot.position,
-        processor.position
-      );
-      
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestProcessorId = processorId;
-      }
+    if (processors.length === 0) {
+      return null;
     }
     
-    return closestProcessorId;
+    let closest = null;
+    let minDistance = Infinity;
+    
+    processors.forEach(processor => {
+      const distance = this.calculateDistance(position, processor.position);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = processor;
+      }
+    });
+    
+    return closest;
+  }
+  
+  // Trouver le canon le plus proche
+  findClosestCannon(position) {
+    const cannons = Object.values(this.gameState.cannons || {});
+    
+    if (cannons.length === 0) {
+      return null;
+    }
+    
+    let closest = null;
+    let minDistance = Infinity;
+    
+    cannons.forEach(cannon => {
+      const distance = this.calculateDistance(position, cannon.position);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = cannon;
+      }
+    });
+    
+    return closest;
   }
   
   // Trouver le joueur le plus proche
-  findClosestPlayer() {
-    const bot = this.gameState.players[this.id];
-    if (!bot) return null;
+  findClosestPlayer(me) {
+    const players = Object.values(this.gameState.players || {});
     
-    let closestPlayerId = null;
+    if (players.length <= 1) {
+      return null; // Uniquement moi-même
+    }
+    
+    let closest = null;
     let minDistance = Infinity;
     
-    for (const playerId in this.gameState.players) {
-      // Ignorer ce bot lui-même et les joueurs morts
-      const player = this.gameState.players[playerId];
-      if (playerId === this.id || !player.isAlive) continue;
+    players.forEach(player => {
+      // Ignorer moi-même, les bots et les joueurs morts
+      if (player.id === this.id || !player.isAlive || player.id.startsWith('bot-')) {
+        return;
+      }
       
-      const distance = this.calculateDistance(
-        bot.position,
-        player.position
-      );
-      
+      const distance = this.calculateDistance(me.position, player.position);
       if (distance < minDistance) {
         minDistance = distance;
-        closestPlayerId = playerId;
+        closest = player;
       }
-    }
+    });
     
-    return closestPlayerId;
+    return closest;
   }
   
-  // Se diriger vers la cible
-  moveTowardsTarget(bot) {
-    if (!this.targetPosition) return;
-    
+  // Se déplacer vers une cible
+  moveTowardsTarget(me, targetPosition, shouldFire, isHunting = false) {
     // Calculer l'angle vers la cible
-    const angleToTarget = Math.atan2(
-      this.targetPosition.z - bot.position.z,
-      this.targetPosition.x - bot.position.x
-    );
+    const targetAngle = Math.atan2(
+      targetPosition.x - me.position.x,
+      targetPosition.z - me.position.z
+    ) + Math.PI;
     
     // Angle actuel du bot
-    const currentAngle = Math.atan2(bot.direction.z, bot.direction.x);
+    const currentAngle = me.rotation;
     
-    // Différence d'angle (normalisée entre -PI et PI)
-    let angleDifference = angleToTarget - currentAngle;
-    while (angleDifference > Math.PI) angleDifference -= 2 * Math.PI;
-    while (angleDifference < -Math.PI) angleDifference += 2 * Math.PI;
+    // Calculer la différence d'angle (en tenant compte des bords circulaires)
+    let angleDiff = targetAngle - currentAngle;
+    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
     
-    // Déterminer les inputs de mouvement
-    const inputs = {
-      forward: false,
+    // Tolérance d'angle pour avancer
+    const angleTolerance = 0.3; // environ 17 degrés
+    
+    // Vérifier si un obstacle est sur le chemin (sauf en mode chasse)
+    const hasObstacle = !isHunting && this.checkForObstacle(me, targetPosition);
+    
+    if (hasObstacle) {
+      // Si obstacle, activer le mode mouvement aléatoire pendant 2 secondes
+      this.randomMoveTime = Date.now() + 2000;
+      this.sendRandomMovement(shouldFire);
+      return;
+    }
+    
+    // Envoyer les inputs en fonction de la position relative
+    this.sendInputs({
+      forward: Math.abs(angleDiff) < angleTolerance,
       backward: false,
-      left: false,
-      right: false,
-      fire: false
-    };
-    
-    // Détection d'obstacles
-    const obstacleInfo = this.detectObstaclesAhead(bot);
-    
-    if (obstacleInfo.hasObstacle) {
-      // Tirer si l'obstacle est un robot ou un arbre
-      if (obstacleInfo.type === 'player' || obstacleInfo.type === 'tree') {
-        inputs.fire = true;
-        console.log(`[HunterBot ${this.id}] Shooting at ${obstacleInfo.type}`);
-      }
-      
-      // Stratégie d'évitement d'obstacles
-      if (obstacleInfo.side === 'left') {
-        // Obstacle à gauche, tourner à droite
-        inputs.right = true;
-      } else {
-        // Obstacle à droite, tourner à gauche
-        inputs.left = true;
-      }
-      
-      // Si l'obstacle est trop proche, reculer légèrement
-      if (obstacleInfo.distance < 1.5) {
-        inputs.backward = true;
-      } else {
-        // Sinon, continuer d'avancer mais en tournant
-        inputs.forward = true;
-      }
-    } else {
-      // Pas d'obstacle, navigation normale
-      
-      // Rotation : utiliser left/right pour s'aligner avec la cible
-      if (angleDifference > 0.1) {
-        inputs.left = true;
-      } else if (angleDifference < -0.1) {
-        inputs.right = true;
-      }
-      
-      // Avancer vers la cible si on est à peu près dans la bonne direction
-      if (Math.abs(angleDifference) < Math.PI / 2) {
-        inputs.forward = true;
-      }
-    }
-    
-    // Calculer la distance à la cible
-    const distance = this.calculateDistance(bot.position, this.targetPosition);
-    
-    // Si on est très proche d'un collectible et qu'on le chasse, ralentir
-    if ((this.targetType === 'cannon' || this.targetType === 'processor') && distance < 1) {
-      inputs.forward = distance > 0.2; // S'arrêter si très proche
-    }
-    
-    // Envoyer les inputs au serveur
-    this.sendInputs(inputs);
+      left: angleDiff > 0,
+      right: angleDiff < 0,
+      fire: shouldFire
+    });
   }
   
-  // Détecter les obstacles devant le bot
-  detectObstaclesAhead(bot) {
-    const result = {
-      hasObstacle: false,
-      distance: Infinity,
-      side: 'center',  // 'left', 'right', ou 'center'
-      type: null       // Type d'obstacle
+  // Vérification d'obstacle
+  checkForObstacle(me, targetPosition) {
+    // Simplification : vérifier uniquement s'il y a un joueur ou une structure proche
+    // sur le chemin direct vers la cible
+    
+    const direction = {
+      x: targetPosition.x - me.position.x,
+      z: targetPosition.z - me.position.z
     };
     
-    // Distance de détection
-    const detectionRange = 5;
+    // Normaliser la direction
+    const distance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+    if (distance === 0) return false;
     
-    // Vérifier les structures (obstacles statiques)
+    direction.x /= distance;
+    direction.z /= distance;
+    
+    // Vérifier les autres joueurs (uniquement en mode collecte, pas en chasse)
+    if (this.currentBehavior !== this.BEHAVIOR.HUNTING) {
+      for (const playerId in this.gameState.players) {
+        if (playerId === this.id) continue; // Ignorer soi-même
+        
+        const player = this.gameState.players[playerId];
+        if (!player.isAlive) continue; // Ignorer les joueurs morts
+        
+        // Vecteur du bot à l'autre joueur
+        const toPlayer = {
+          x: player.position.x - me.position.x,
+          z: player.position.z - me.position.z
+        };
+        
+        // Distance au joueur
+        const playerDist = Math.sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
+        if (playerDist > distance) continue; // Le joueur est plus loin que la cible
+        
+        // Projection du vecteur joueur sur la direction
+        const dot = toPlayer.x * direction.x + toPlayer.z * direction.z;
+        if (dot <= 0) continue; // Le joueur est derrière nous
+        
+        // Distance du joueur à la ligne de vue
+        const projX = direction.x * dot;
+        const projZ = direction.z * dot;
+        const perpX = toPlayer.x - projX;
+        const perpZ = toPlayer.z - projZ;
+        const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
+        
+        if (perpDist < 1.5) return true; // Obstacle détecté
+      }
+    }
+    
+    // Vérifier les structures
     for (const structureId in this.gameState.structures) {
       const structure = this.gameState.structures[structureId];
-      if (structure.destroyed) continue;
+      if (structure.destroyed) continue; // Ignorer les structures détruites
       
-      const distance = this.calculateDistance(bot.position, structure.position);
+      // Vecteur du bot à la structure
+      const toStructure = {
+        x: structure.position.x - me.position.x,
+        z: structure.position.z - me.position.z
+      };
       
-      // Si l'obstacle est trop loin, l'ignorer
-      if (distance > detectionRange) continue;
+      // Distance à la structure
+      const structDist = Math.sqrt(toStructure.x * toStructure.x + toStructure.z * toStructure.z);
+      if (structDist > distance) continue; // La structure est plus loin que la cible
       
-      // Calculer l'angle relatif vers l'obstacle
-      const angleToObstacle = Math.atan2(
-        structure.position.z - bot.position.z,
-        structure.position.x - bot.position.x
-      );
+      // Projection du vecteur structure sur la direction
+      const dot = toStructure.x * direction.x + toStructure.z * direction.z;
+      if (dot <= 0) continue; // La structure est derrière nous
       
-      // Angle actuel du bot
-      const currentAngle = Math.atan2(bot.direction.z, bot.direction.x);
+      // Distance de la structure à la ligne de vue
+      const projX = direction.x * dot;
+      const projZ = direction.z * dot;
+      const perpX = toStructure.x - projX;
+      const perpZ = toStructure.z - projZ;
+      const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
       
-      // Différence d'angle (normalisée entre -PI et PI)
-      let angleDifference = angleToObstacle - currentAngle;
-      while (angleDifference > Math.PI) angleDifference -= 2 * Math.PI;
-      while (angleDifference < -Math.PI) angleDifference += 2 * Math.PI;
+      // Rayon de collision différent selon le type
+      const collisionRadius = structure.type === 'waterTower' ? 5 : 2;
       
-      // Obstacle devant (angle relatif inférieur à 60 degrés)
-      if (Math.abs(angleDifference) < Math.PI / 3) {
-        // Si c'est l'obstacle le plus proche jusqu'à présent
-        if (distance < result.distance) {
-          result.hasObstacle = true;
-          result.distance = distance;
-          result.side = angleDifference > 0 ? 'left' : 'right';
-          
-          // Identifier le type d'obstacle
-          result.type = structure.type || 'structure';
-        }
+      if (perpDist < collisionRadius) return true; // Obstacle détecté
+    }
+    
+    return false;
+  }
+  
+  // Envoyer un mouvement aléatoire
+  sendRandomMovement(shouldFire) {
+    // Si nous n'avons pas encore choisi de direction aléatoire ou si c'est le moment de changer
+    if (!this.randomMoveDirection.set || Math.random() < 0.05) {
+      this.randomMoveDirection = {
+        forward: Math.random() > 0.3, // 70% de chance d'avancer
+        backward: false,
+        left: Math.random() > 0.5, // 50% de chance de tourner à gauche
+        right: Math.random() < 0.5, // 50% de chance de tourner à droite
+        set: true
+      };
+      
+      // Éviter de tourner à gauche et à droite en même temps
+      if (this.randomMoveDirection.left && this.randomMoveDirection.right) {
+        this.randomMoveDirection.right = false;
       }
     }
     
-    // Vérifier aussi les autres joueurs comme obstacles potentiels
-    for (const playerId in this.gameState.players) {
-      // Ignorer le bot lui-même
-      if (playerId === this.id) continue;
-      
-      const player = this.gameState.players[playerId];
-      if (!player.isAlive) continue;
-      
-      // Si c'est la cible actuelle en mode chasse, ne pas l'éviter
-      if (this.state === 'HUNTING_PLAYERS' && playerId === this.targetId) continue;
-      
-      const distance = this.calculateDistance(bot.position, player.position);
-      
-      // Si l'obstacle est trop loin, l'ignorer
-      if (distance > detectionRange) continue;
-      
-      // Calculer l'angle relatif vers l'obstacle
-      const angleToObstacle = Math.atan2(
-        player.position.z - bot.position.z,
-        player.position.x - bot.position.x
-      );
-      
-      // Angle actuel du bot
-      const currentAngle = Math.atan2(bot.direction.z, bot.direction.x);
-      
-      // Différence d'angle
-      let angleDifference = angleToObstacle - currentAngle;
-      while (angleDifference > Math.PI) angleDifference -= 2 * Math.PI;
-      while (angleDifference < -Math.PI) angleDifference += 2 * Math.PI;
-      
-      // Obstacle devant (angle relatif inférieur à 60 degrés)
-      if (Math.abs(angleDifference) < Math.PI / 3) {
-        // Si c'est l'obstacle le plus proche jusqu'à présent
-        if (distance < result.distance) {
-          result.hasObstacle = true;
-          result.distance = distance;
-          result.side = angleDifference > 0 ? 'left' : 'right';
-          
-          // Identifier comme joueur
-          result.type = 'player';
-        }
-      }
-    }
-    
-    return result;
+    // Envoyer les inputs aléatoires
+    this.sendInputs({
+      forward: this.randomMoveDirection.forward,
+      backward: this.randomMoveDirection.backward,
+      left: this.randomMoveDirection.left,
+      right: this.randomMoveDirection.right,
+      fire: shouldFire
+    });
   }
   
-  // Se déplacer aléatoirement
-  moveRandomly() {
-    // Générer des mouvements aléatoires
-    const randomMove = Math.floor(Math.random() * 4);
-    const inputs = {
-      forward: randomMove === 0,
-      backward: randomMove === 1,
-      left: randomMove === 2,
-      right: randomMove === 3,
-      fire: false
-    };
-    
-    this.sendInputs(inputs);
-  }
-  
-  // Tirer sur la cible
-  shootAtTarget(bot) {
-    if (!this.targetPosition) return;
-    
-    const distance = this.calculateDistance(bot.position, this.targetPosition);
-    const range = bot.stats?.range || 10;
-    
-    // Tirer si on est assez proche et approximativement dans la bonne direction
-    if (distance <= range * 0.9) {
-      // Calculer l'angle vers la cible
-      const angleToTarget = Math.atan2(
-        this.targetPosition.z - bot.position.z,
-        this.targetPosition.x - bot.position.x
-      );
-      
-      // Angle actuel du bot
-      const currentAngle = Math.atan2(bot.direction.z, bot.direction.x);
-      
-      // Différence d'angle absolue
-      let angleDifference = Math.abs(angleToTarget - currentAngle);
-      while (angleDifference > Math.PI) angleDifference = 2 * Math.PI - angleDifference;
-      
-      // Tirer si on est à peu près dans la bonne direction
-      if (angleDifference < Math.PI / 4) {
-        this.sendInputs({
-          forward: false,
-          backward: false,
-          left: false,
-          right: false,
-          fire: true
-        });
-      }
-    }
-  }
-  
-  // Calculer la distance entre deux positions
-  calculateDistance(pos1, pos2) {
+  // Calcule la distance entre deux points
+  calculateDistance(a, b) {
     return Math.sqrt(
-      Math.pow(pos2.x - pos1.x, 2) +
-      Math.pow(pos2.y - pos1.y, 2) +
-      Math.pow(pos2.z - pos1.z, 2)
+      Math.pow(b.x - a.x, 2) +
+      Math.pow(b.z - a.z, 2)
     );
   }
   
-  // Gérer les événements du jeu
+  // Traiter les événements du jeu
   handleEvent(event, data) {
-    // Suivre les canons collectés
-    if (event === 'cannonCollected' && data.playerId === this.id) {
-      this.collectedCannons++;
-      console.log(`[HunterBot ${this.id}] Cannon collected! Total: ${this.collectedCannons}`);
+    // Réagir lorsqu'on est touché
+    if (event === 'playerDamaged' && data.id === this.id) {
+      // Si on prend des dégâts, entrer en mode mouvement aléatoire pendant 1 seconde
+      this.randomMoveTime = Date.now() + 1000;
+      // Réinitialiser la direction aléatoire pour une nouvelle
+      this.randomMoveDirection.set = false;
       
-      // Changer d'état si on a collecté assez de canons
-      if (this.collectedCannons >= 4 && this.state === 'COLLECTING_CANNONS') {
-        this.state = 'HUNTING_PLAYERS';
-        this.targetId = null;
-        this.targetType = null;
-        this.targetPosition = null;
-        console.log(`[HunterBot ${this.id}] Switching to HUNTING_PLAYERS mode after collection`);
-      }
-    }
-    
-    // Réagir quand quelqu'un nous tire dessus en cherchant éventuellement à riposter
-    if ((event === 'playerDamaged' || event === 'playerKilled') && data.id === this.id) {
-      if (this.state === 'HUNTING_PLAYERS' && data.killerId && this.targetId !== data.killerId) {
-        // Changer de cible pour viser celui qui nous attaque
-        this.targetId = data.killerId;
-        this.targetType = 'player';
-        if (this.gameState.players[this.targetId]) {
-          this.targetPosition = this.gameState.players[this.targetId].position;
-          console.log(`[HunterBot ${this.id}] Under attack! Retargeting to ${this.targetId}`);
+      // En mode chasse, si on est attaqué et qu'on connaît l'attaquant, le cibler
+      if (this.currentBehavior === this.BEHAVIOR.HUNTING && data.killerId) {
+        const attacker = this.gameState.players[data.killerId];
+        if (attacker && attacker.isAlive) {
+          this.currentTarget = {
+            id: data.killerId,
+            position: { ...attacker.position },
+            lastSeen: Date.now()
+          };
+          this.targetUpdateTime = Date.now();
         }
       }
     }
+    
+    // Réagir lorsqu'on est tué
+    if (event === 'playerKilled' && data.id === this.id) {
+      this.isAlive = false;
+    }
+    
+    // Suivi des processeurs collectés
+    if (event === 'processorCollected' && data.playerId === this.id) {
+      // Incrémenter notre compteur
+      this.processorCount++;
+      this.randomMoveTime = 0;
+    }
+    
+    // Suivi des canons collectés
+    if (event === 'cannonCollected' && data.playerId === this.id) {
+      // Incrémenter notre compteur de canons
+      this.cannonCount++;
+      this.randomMoveTime = 0;
+    }
+    
+    // Ajuster le comportement si nécessaire
+    this.updateBehavior();
   }
 }
 
-module.exports = HunterBot;
+module.exports = AdvancedBot;
