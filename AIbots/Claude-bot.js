@@ -50,6 +50,18 @@ class DominanceBot {
    * @param {object} gameState - Current state of the game
    */
   update(gameState) {
+
+    // Vérifier la période d'initialisation
+    const currentTime = Date.now();
+    if (this.initializationPeriod) {
+      if (currentTime - this.spawnTime > 10000) { // 10 secondes
+        this.initializationPeriod = false;
+      } else {
+        // Pendant l'initialisation, ne rien faire
+        this.sendInputs({forward: false, backward: false, left: false, right: false, fire: false});
+        return;
+      }
+    }
     // Update our reference to the game state
     this.gameState = gameState;
     
