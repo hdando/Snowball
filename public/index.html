@@ -3681,7 +3681,7 @@
 		// Configuration de la scène
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);  // Ciel bleu
-        const camera = new THREE.PerspectiveCamera(15, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000); //FOV,Ratio résolution, rendu lu plus proche, rendu le plus loin
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
@@ -3823,7 +3823,7 @@
 				cameraController.updateCamera(camera);
 			} else {
 				// Default camera position when no player exists
-				camera.position.set(0, 100, 0);
+				camera.position.set(0, 1000, 0);
 				camera.lookAt(0, 0, 0); // Look at the center of the map
 			}
 		}
